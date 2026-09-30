@@ -29,8 +29,6 @@ def get_gspread_client():
     sheet_url = secrets["spreadsheet"]
     return client.open_by_url(sheet_url)
 
-# ttl=0 കൊടുക്കുന്നതിനാൽ ഓരോ പേജ് സ്വിച്ച് ചെയ്യുമ്പോഴും ഏറ്റവും പുതിയ ഡാറ്റ തത്സമയം ഷീറ്റിൽ നിന്ന് ലോഡ് ആകും
-@st.cache_data(ttl=0)
 def fetch_worksheet_data(worksheet_name):
     try:
         sh = get_gspread_client()
@@ -47,10 +45,6 @@ def append_data(worksheet_name, row_dict):
     if not existing_records:
         ws.append_row(list(row_dict.keys()))
     ws.append_row(list(row_dict.values()))
-
-# Read Live Data directly from sheets
-df_ind = fetch_worksheet_data("Individual_Data")
-df_grp = fetch_worksheet_data("Group_Data")
 
 # -------------------------------------------------------------
 # 1. 40 കുടുംബ യൂണിറ്റുകളുടെ ഔദ്യോഗിക ലിസ്റ്റ് (4 Zones)
@@ -153,24 +147,130 @@ def get_age_category(dob):
         return "Super Senior", age
 
 # -------------------------------------------------------------
-# 3. ആപ്പ് ഇന്റർഫേസ്
+# 3. ആപ്പ് ഇന്റർഫേസ് & മുകളിലെ ലിങ്കുകൾ
 # -------------------------------------------------------------
 st.title("⛪ സെന്റ് ജോർജ്ജസ് ചർച്ച്, മുക്കാട്ടുകര")
-st.subheader("ഇടവക ദിന കലാ-സാഹിത്യ-കായിക മത്സര പോർട്ടൽ (സെൻട്രൽ കമ്മിറ്റി)")
+st.subheader("ഇടവക ദിന കലാ-സാഹിത്യ-കായിക മത്സര പോർട്ടൽ")
 
-menu = st.sidebar.radio("Navigation Menu", [
-    "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്", 
-    "✍️ വ്യക്തിഗത മത്സര എൻട്രി", 
-    "👥 ഗ്രൂപ്പ് മത്സര എൻട്രി", 
-    "📊 ഇനം തിരിച്ചുള്ള റിപ്പോർട്ട്", 
-    "🏘️ യൂണിറ്റ് തിരിച്ചുള്ള റിപ്പോർട്ട്"
-])
+# മുകളിൽ നൽകിയിരിക്കുന്ന ലിങ്ക് / ടാബുകൾ
+view_option = st.radio(
+    "📌 നാവിഗേഷൻ (Navigation Links)", 
+    ["✍️ രജിസ്ട്രേഷൻ ഫോം (Registration)", "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്", "📊 റിപ്പോർട്ടുകൾ (Reports)"], 
+    horizontal=True
+)
+
+st.markdown("---")
 
 # -------------------------------------------------------------
-# 4. ഡാഷ്‌ബോർഡ്
+# 4. പ്രഥമ പേജ്: രജിസ്ട്രേഷൻ ഫോം
 # -------------------------------------------------------------
-if menu == "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്":
+if view_option == "✍️ രജിസ്ട്രേഷൻ ഫോം (Registration)":
+    
+    reg_type = st.radio("രജിസ്ട്രേഷൻ ടൈപ്പ് തിരഞ്ഞെടുക്കുക:", ["വ്യക്തിഗത മത്സരം (Individual Entry)", "ഗ്രൂപ്പ് മത്സരം (Group Entry)"], horizontal=True)
+    st.markdown("---")
+
+    if reg_type == "വ്യക്തിഗത മത്സരം (Individual Entry)":
+        st.header("✍️ വ്യക്തിഗത മത്സരങ്ങൾ - രജിസ്ട്രേഷൻ")
+        
+        with st.form("ind_form", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                category_type = st.selectbox("മത്സര വിഭാഗം", ["കലാമത്സരം", "കായിക മത്സരം", "സാഹിത്യമത്സരം"])
+                unit = st.selectbox("കുടുംബ യൂണിറ്റ് തിരഞ്ഞെടുക്കുക (40 Units)", ALL_UNITS)
+                participant_name = st.text_input("മത്സരാർത്ഥിയുടെ പേര്")
+                gender = st.selectbox("ലിംഗം", ["Male", "Female"])
+            
+            with col2:
+                dob = st.date_input("ജനന തീയതി", value=date(2000, 1, 1), min_value=date(1930, 1, 1), max_value=date.today())
+                manager_info = st.text_input("ടീം മാനേജരുടെ പേരും ഫോൺ നമ്പറും")
+
+            age_cat, age = get_age_category(dob)
+            st.info(f"💡 **കണക്കാക്കിയ വയസ്സ്:** {age} | **അർഹമായ ഏജ് കാറ്റഗറി:** {age_cat}")
+
+            if category_type == "കലാമത്സരം":
+                eligible_events = [item for item, cats in ARTS_INDIVIDUAL.items() if age_cat in cats]
+            elif category_type == "കായിക മത്സരം":
+                eligible_events = [item for item, cats in SPORTS_INDIVIDUAL.items() if age_cat in cats]
+            else:
+                eligible_events = LITERARY_INDIVIDUAL
+
+            if not eligible_events:
+                st.warning(f"{age_cat} വിഭാഗത്തിന് {category_type}-ൽ വ്യക്തിഗത മത്സരങ്ങൾ ലഭ്യമല്ല!")
+                selected_events = []
+            else:
+                selected_events = st.multiselect(
+                    "മത്സരങ്ങൾ തിരഞ്ഞെടുക്കുക (പരമാവധി 3 ഇനങ്ങൾ)",
+                    options=eligible_events,
+                    max_selections=3
+                )
+
+            submit_btn = st.form_submit_button("രജിസ്റ്റർ ചെയ്യുക")
+
+            if submit_btn:
+                if not participant_name:
+                    st.error("മത്സരാർത്ഥിയുടെ പേര് നൽകണം!")
+                elif len(selected_events) == 0:
+                    st.error("കുറഞ്ഞത് ഒരു മത്സരമെങ്കിലും തിരഞ്ഞെടുക്കുക!")
+                else:
+                    entry = {
+                        "വിഭാഗം": category_type,
+                        "യൂണിറ്റ്": unit,
+                        "പേര്": participant_name,
+                        "DOB": str(dob),
+                        "വയസ്സ്": age,
+                        "ഏജ് കാറ്റഗറി": age_cat,
+                        "ലിംഗം": gender,
+                        "തിരഞ്ഞെടുത്ത ഇനങ്ങൾ": ", ".join(selected_events),
+                        "ടീം മാനേജർ": manager_info,
+                        "രജിസ്റ്റർ ചെയ്ത സമയം": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    try:
+                        append_data("Individual_Data", entry)
+                        st.success(f"വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({participant_name} - {unit})")
+                    except Exception as ex:
+                        st.error(f"ഡാറ്റാബേസ് സേവ് ചെയ്യുന്നതിൽ തടസ്സം നേരിട്ടു: {ex}")
+
+    else:
+        st.header("👥 ഗ്രൂപ്പ് മത്സരങ്ങൾ - രജിസ്ട്രേഷൻ")
+        
+        with st.form("group_form", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                g_type = st.selectbox("മത്സര വിഭാഗം", ["കലാമത്സരം", "കായിക മത്സരം"])
+                main_unit = st.selectbox("പ്രധാന യൂണിറ്റ് (Main Unit)", ALL_UNITS)
+                g_event = st.selectbox("ഇനത്തിന്റെ പേര്", ARTS_GROUP if g_type == "കലാമത്സരം" else SPORTS_GROUP)
+            with col2:
+                zone = st.selectbox("മേഖല (Zone)", list(UNITS_BY_ZONE.keys()))
+                manager = st.text_input("ടീം മാനേജർ വിവരങ്ങൾ")
+                cluster_unit = st.multiselect("ക്ലസ്റ്റർ യൂണിറ്റ് (മറ്റ് യൂണിറ്റുകൾ ഉണ്ടെങ്കിൽ)", [u for u in ALL_UNITS if u != main_unit])
+
+            g_submit = st.form_submit_button("ഗ്രൂപ്പ് എൻട്രി സേവ് ചെയ്യുക")
+            if g_submit:
+                g_entry = {
+                    "വിഭാഗം": g_type,
+                    "മേഖല": zone,
+                    "പ്രധാന യൂണിറ്റ്": main_unit,
+                    "ഇനത്തിന്റെ പേര്": g_event,
+                    "ക്ലസ്റ്റർ യൂണിറ്റുകൾ": ", ".join(cluster_unit) if cluster_unit else "-",
+                    "ടീം മാനേജർ": manager,
+                    "രജിസ്റ്റർ ചെയ്ത സമയം": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+                try:
+                    append_data("Group_Data", g_entry)
+                    st.success(f"ഗ്രൂപ്പ് എൻട്രി വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({main_unit})")
+                except Exception as ex:
+                    st.error(f"ഡാറ്റാബേസ് സേവ് ചെയ്യുന്നതിൽ തടസ്സം നേരിട്ടു: {ex}")
+
+# -------------------------------------------------------------
+# 5. ഡാഷ്‌ബോർഡ്
+# -------------------------------------------------------------
+elif view_option == "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്":
     st.header("📌 സെൻട്രൽ കമ്മിറ്റി ഡാഷ്‌ബോർഡ്")
+    
+    with st.spinner("ഡാറ്റ പുതുക്കുന്നു..."):
+        df_ind = fetch_worksheet_data("Individual_Data")
+        df_grp = fetch_worksheet_data("Group_Data")
+
     c1, c2, c3 = st.columns(3)
     c1.metric("ആകെ വ്യക്തിഗത എൻട്രികൾ", len(df_ind) if not df_ind.empty else 0)
     c2.metric("ആകെ ഗ്രൂപ്പ് എൻട്രികൾ", len(df_grp) if not df_grp.empty else 0)
@@ -179,7 +279,7 @@ if menu == "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്":
     c3.metric("രജിസ്റ്റർ ചെയ്ത യൂണിറ്റുകൾ", f"{registered_units} / 40")
 
     st.markdown("---")
-    st.subheader("🏘️ 40 യൂണിറ്റുകളുടെ ലിസ്റ്റും രജിസ്ട്രേഷൻ നിലയും")
+    st.subheader("🏘️️ 40 യൂണിറ്റുകളുടെ ലിസ്റ്റും രജിസ്ട്രേഷൻ നിലയും")
     
     col1, col2 = st.columns(2)
     zones = list(UNITS_BY_ZONE.items())
@@ -199,115 +299,16 @@ if menu == "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്":
             st.dataframe(zone_df, use_container_width=True, hide_index=True)
 
 # -------------------------------------------------------------
-# 5. വ്യക്തിഗത മത്സര എൻട്രി
+# 6. റിപ്പോർട്ടുകൾ
 # -------------------------------------------------------------
-elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്രി":
-    st.header("✍️ വ്യക്തിഗത മത്സരങ്ങൾ - രജിസ്ട്രേഷൻ")
+elif view_option == "📊 റിപ്പോർട്ടുകൾ (Reports)":
+    st.header("📊 സമഗ്ര റിപ്പോർട്ടുകൾ")
     
-    with st.form("ind_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            category_type = st.selectbox("മത്സര വിഭാഗം", ["കലാമത്സരം", "കായിക മത്സരം", "സാഹിത്യമത്സരം"])
-            unit = st.selectbox("കുടുംബ യൂണിറ്റ് തിരഞ്ഞെടുക്കുക (40 Units)", ALL_UNITS)
-            participant_name = st.text_input("മത്സരാർത്ഥിയുടെ പേര്")
-            gender = st.selectbox("ലിംഗം", ["Male", "Female"])
-        
-        with col2:
-            dob = st.date_input("ജനന തീയതി", value=date(2000, 1, 1), min_value=date(1930, 1, 1), max_value=date.today())
-            manager_info = st.text_input("ടീം മാനേജരുടെ പേരും ഫോൺ നമ്പറും")
+    with st.spinner("ഡാറ്റാബേസിൽ നിന്ന് എൻട്രികൾ ശേഖരിക്കുന്നു..."):
+        df_ind = fetch_worksheet_data("Individual_Data")
+        df_grp = fetch_worksheet_data("Group_Data")
 
-        age_cat, age = get_age_category(dob)
-        st.info(f"💡 **കണക്കാക്കിയ വയസ്സ്:** {age} | **അർഹമായ ഏജ് കാറ്റഗറി:** {age_cat}")
-
-        if category_type == "കലാമത്സരം":
-            eligible_events = [item for item, cats in ARTS_INDIVIDUAL.items() if age_cat in cats]
-        elif category_type == "കായിക മത്സരം":
-            eligible_events = [item for item, cats in SPORTS_INDIVIDUAL.items() if age_cat in cats]
-        else:
-            eligible_events = LITERARY_INDIVIDUAL
-
-        if not eligible_events:
-            st.warning(f"{age_cat} വിഭാഗത്തിന് {category_type}-ൽ വ്യക്തിഗത മത്സരങ്ങൾ ലഭ്യമല്ല!")
-            selected_events = []
-        else:
-            selected_events = st.multiselect(
-                "മത്സരങ്ങൾ തിരഞ്ഞെടുക്കുക (പരമാവധി 3 ഇനങ്ങൾ)",
-                options=eligible_events,
-                max_selections=3
-            )
-
-        submit_btn = st.form_submit_button("രജിസ്റ്റർ ചെയ്യുക")
-
-        if submit_btn:
-            if not participant_name:
-                st.error("മത്സരാർത്ഥിയുടെ പേര് നൽകണം!")
-            elif len(selected_events) == 0:
-                st.error("കുറഞ്ഞത് ഒരു മത്സരമെങ്കിലും തിരഞ്ഞെടുക്കുക!")
-            else:
-                entry = {
-                    "വിഭാഗം": category_type,
-                    "യൂണിറ്റ്": unit,
-                    "പേര്": participant_name,
-                    "DOB": str(dob),
-                    "വയസ്സ്": age,
-                    "ഏജ് കാറ്റഗറി": age_cat,
-                    "ലിംഗം": gender,
-                    "തിരഞ്ഞെടുത്ത ഇനങ്ങൾ": ", ".join(selected_events),
-                    "ടീം മാനേജർ": manager_info,
-                    "രജിസ്റ്റർ ചെയ്ത സമയം": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                
-                try:
-                    append_data("Individual_Data", entry)
-                    st.cache_data.clear() # Clear cache to fetch updated data instantly
-                    st.success(f"വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({participant_name} - {unit})")
-                    st.rerun()
-                except Exception as ex:
-                    st.error(f"ഡാറ്റാബേസ് സേവ് ചെയ്യുന്നതിൽ തടസ്സം നേരിട്ടു: {ex}")
-
-# -------------------------------------------------------------
-# 6. ഗ്രൂപ്പ് മത്സര എൻട്രി
-# -------------------------------------------------------------
-elif menu == "👥 ഗ്രൂപ്പ് മത്സര എൻട്രി":
-    st.header("👥 ഗ്രൂപ്പ് മത്സരങ്ങൾ - രജിസ്ട്രേഷൻ")
-    
-    with st.form("group_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            g_type = st.selectbox("മത്സര വിഭാഗം", ["കലാമത്സരം", "കായിക മത്സരം"])
-            main_unit = st.selectbox("പ്രധാന യൂണിറ്റ് (Main Unit)", ALL_UNITS)
-            g_event = st.selectbox("ഇനത്തിന്റെ പേര്", ARTS_GROUP if g_type == "കലാമത്സരം" else SPORTS_GROUP)
-        with col2:
-            zone = st.selectbox("മേഖല (Zone)", list(UNITS_BY_ZONE.keys()))
-            manager = st.text_input("ടീം മാനേജർ വിവരങ്ങൾ")
-            cluster_unit = st.multiselect("ക്ലസ്റ്റർ യൂണിറ്റ് (മറ്റ് യൂണിറ്റുകൾ ഉണ്ടെങ്കിൽ)", [u for u in ALL_UNITS if u != main_unit])
-
-        g_submit = st.form_submit_button("ഗ്രൂപ്പ് എൻട്രി സേവ് ചെയ്യുക")
-        if g_submit:
-            g_entry = {
-                "വിഭാഗം": g_type,
-                "മേഖല": zone,
-                "പ്രധാന യൂണിറ്റ്": main_unit,
-                "ഇനത്തിന്റെ പേര്": g_event,
-                "ക്ലസ്റ്റർ യൂണിറ്റുകൾ": ", ".join(cluster_unit) if cluster_unit else "-",
-                "ടീം മാനേജർ": manager,
-                "രജിസ്റ്റർ ചെയ്ത സമയം": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-            try:
-                append_data("Group_Data", g_entry)
-                st.cache_data.clear() # Clear cache to fetch updated data instantly
-                st.success(f"ഗ്രൂപ്പ് എൻട്രി വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({main_unit})")
-                st.rerun()
-            except Exception as ex:
-                st.error(f"ഡാറ്റാബേസ് സേവ് ചെയ്യുന്നതിൽ തടസ്സം നേരിട്ടു: {ex}")
-
-# -------------------------------------------------------------
-# 7. ഇനം തിരിച്ചുള്ള റിപ്പോർട്ട്
-# -------------------------------------------------------------
-elif menu == "📊 ഇനം തിരിച്ചുള്ള റിപ്പോർട്ട്":
-    st.header("📊 മത്സരങ്ങൾ തിരിച്ചുള്ള റിപ്പോർട്ടുകൾ")
-    
-    tab1, tab2 = st.tabs(["വ്യക്തിഗത മത്സരങ്ങൾ", "ഗ്രൂപ്പ് മത്സരങ്ങൾ"])
+    tab1, tab2, tab3 = st.tabs(["വ്യക്തിഗത മത്സരങ്ങൾ", "ഗ്രൂപ്പ് മത്സരങ്ങൾ", "🏘️ യൂണിറ്റ് തിരിച്ചുള്ള റിപ്പോർട്ട്"])
     
     with tab1:
         if not df_ind.empty:
@@ -325,19 +326,14 @@ elif menu == "📊 ഇനം തിരിച്ചുള്ള റിപ്പ�
         else:
             st.info("ഗ്രൂപ്പ് എൻട്രികളൊന്നും ലഭ്യമായിട്ടില്ല.")
 
-# -------------------------------------------------------------
-# 8. യൂണിറ്റ് തിരിച്ചുള്ള റിപ്പോർട്ട്
-# -------------------------------------------------------------
-elif menu == "🏘️ യൂണിറ്റ് തിരിച്ചുള്ള റിപ്പോർട്ട്":
-    st.header("🏘️ യൂണിറ്റ് തിരിച്ചുള്ള റിപ്പോർട്ട്")
-    selected_u = st.selectbox("യൂണിറ്റ് തിരഞ്ഞെടുക്കുക", ALL_UNITS)
-    
-    if not df_ind.empty and "യൂണിറ്റ്" in df_ind.columns:
-        unit_filtered = df_ind[df_ind["യൂണിറ്റ്"] == selected_u]
-        st.write(f"**{selected_u}** യൂണിറ്റിൽ നിന്നും വന്ന ആകെ വ്യക്തിഗത അപേക്ഷകൾ: **{len(unit_filtered)}**")
-        if not unit_filtered.empty:
-            st.dataframe(unit_filtered, use_container_width=True)
+    with tab3:
+        selected_u = st.selectbox("യൂണിറ്റ് തിരഞ്ഞെടുക്കുക", ALL_UNITS)
+        if not df_ind.empty and "യൂണിറ്റ്" in df_ind.columns:
+            unit_filtered = df_ind[df_ind["യൂണിറ്റ്"] == selected_u]
+            st.write(f"**{selected_u}** യൂണിറ്റിൽ നിന്നും വന്ന ആകെ വ്യക്തിഗത അപേക്ഷകൾ: **{len(unit_filtered)}**")
+            if not unit_filtered.empty:
+                st.dataframe(unit_filtered, use_container_width=True)
+            else:
+                st.info("ഈ യൂണിറ്റിൽ നിന്നും ഇതുവരെ അപേക്ഷകളൊന്നും ലഭിച്ചിട്ടില്ല.")
         else:
-            st.info("ഈ യൂണിറ്റിൽ നിന്നും ഇതുവരെ അപേക്ഷകളൊന്നും ലഭിച്ചിട്ടില്ല.")
-    else:
-        st.info("ഡാറ്റയൊന്നും ലഭ്യമായിട്ടില്ല.")
+            st.info("ഡാറ്റയൊന്നും ലഭ്യമായിട്ടില്ല.")
