@@ -29,30 +29,37 @@ def get_gspread_client():
     sheet_url = secrets["spreadsheet"]
     return client.open_by_url(sheet_url)
 
-# ഡാറ്റ തത്സമയം സിങ്ക് ചെയ്യാൻ Streamlit Caching ഒഴിവാക്കി തത്സമയം ഫെച്ച് ചെയ്യുന്നു
-def load_data(worksheet_name):
+def fetch_all_data():
+    """ഗൂഗിൾ ഷീറ്റിൽ നിന്നും അല്ലെങ്കിൽ സെഷനിൽ നിന്നും തത്സമയം ഡാറ്റ റീഡ് ചെയ്യുന്നു"""
     try:
         sh = get_gspread_client()
-        ws = sh.worksheet(worksheet_name)
-        data = ws.get_all_records()
-        return pd.DataFrame(data)
+        
+        ws_ind = sh.worksheet("Individual_Data")
+        ind_data = ws_ind.get_all_records()
+        df_ind = pd.DataFrame(ind_data)
+        
+        ws_grp = sh.worksheet("Group_Data")
+        grp_data = ws_grp.get_all_records()
+        df_grp = pd.DataFrame(grp_data)
+        
+        return df_ind, df_grp
     except Exception as e:
-        return pd.DataFrame()
+        if 'df_ind' not in st.session_state:
+            st.session_state.df_ind = pd.DataFrame()
+        if 'df_grp' not in st.session_state:
+            st.session_state.df_grp = pd.DataFrame()
+        return st.session_state.df_ind, st.session_state.df_grp
 
 def append_data(worksheet_name, row_dict):
     sh = get_gspread_client()
     ws = sh.worksheet(worksheet_name)
-    
-    # Check if header exists, if worksheet is completely empty
     existing_records = ws.get_all_values()
     if not existing_records:
         ws.append_row(list(row_dict.keys()))
-    
     ws.append_row(list(row_dict.values()))
 
-# Read existing data live
-df_ind = load_data("Individual_Data")
-df_grp = load_data("Group_Data")
+# Load latest live data
+df_ind, df_grp = fetch_all_data()
 
 # -------------------------------------------------------------
 # 1. 40 കുടുംബ യൂണിറ്റുകളുടെ ഔദ്യോഗിക ലിസ്റ്റ് (4 Zones)
@@ -160,8 +167,8 @@ def get_age_category(dob):
 st.title("⛪ സെന്റ് ജോർജ്ജസ് ചർച്ച്, മുക്കാട്ടുകര")
 st.subheader("ഇടവക ദിന കലാ-സാഹിത്യ-കായിക മത്സര പോർട്ടൽ (സെൻട്രൽ കമ്മിറ്റി)")
 
-# സിങ്ക് റീഫ്രഷ് ബട്ടൺ
-st.sidebar.button("🔄 Refresh Data", on_click=lambda: st.cache_data.clear() if hasattr(st, "cache_data") else None)
+if st.sidebar.button("🔄 Data Force Refresh"):
+    st.rerun()
 
 menu = st.sidebar.radio("Navigation Menu", [
     "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്", 
@@ -192,11 +199,13 @@ if menu == "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്":
         with zone_cols[col_idx % 2]:
             st.write(f"### 📍 {zone_name}")
             zone_df = pd.DataFrame({"യൂണിറ്റിന്റെ പേര്": units})
+            
             if not df_ind.empty and "യൂണിറ്റ്" in df_ind.columns:
                 reg_counts = df_ind["യൂണിറ്റ്"].value_counts().to_dict()
-                zone_df["രജിസ്ട്രേഷനുകൾ"] = zone_df["യൂണിറ്റിന്റെ പേര്"].map(reg_counts).fillna(0).astype(int)
+                zone_df["വ്യക്തിഗത എൻട്രികൾ"] = zone_df["യൂണിറ്റിന്റെ പേര്"].map(reg_counts).fillna(0).astype(int)
             else:
-                zone_df["രജിസ്ട്രേഷനുകൾ"] = 0
+                zone_df["വ്യക്തിഗത എൻട്രികൾ"] = 0
+                
             st.dataframe(zone_df, use_container_width=True, hide_index=True)
         col_idx += 1
 
@@ -262,7 +271,7 @@ elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്ര
                 try:
                     append_data("Individual_Data", entry)
                     st.success(f"വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({participant_name} - {unit})")
-                    st.rerun()  # തത്സമയം മറ്റെല്ലാ ടാബുകളിലും ഡാറ്റ അപ്ഡേറ്റ് ചെയ്യാൻ
+                    st.rerun()
                 except Exception as ex:
                     st.error(f"ഡാറ്റാബേസ് സേവ് ചെയ്യുന്നതിൽ തടസ്സം നേരിട്ടു: {ex}")
 
@@ -297,7 +306,7 @@ elif menu == "👥 ഗ്രൂപ്പ് മത്സര എൻട്രി":
             try:
                 append_data("Group_Data", g_entry)
                 st.success(f"ഗ്രൂപ്പ് എൻട്രി വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({main_unit})")
-                st.rerun()  # തത്സമയം മറ്റെല്ലാ ടാബുകളിലും ഡാറ്റ അപ്ഡേറ്റ് ചെയ്യാൻ
+                st.rerun()
             except Exception as ex:
                 st.error(f"ഡാറ്റാബേസ് സേവ് ചെയ്യുന്നതിൽ തടസ്സം നേരിട്ടു: {ex}")
 
@@ -329,7 +338,7 @@ elif menu == "📊 ഇനം തിരിച്ചുള്ള റിപ്പ�
 # 8. യൂണിറ്റ് തിരിച്ചുള്ള റിപ്പോർട്ട്
 # -------------------------------------------------------------
 elif menu == "🏘️ യൂണിറ്റ് തിരിച്ചുള്ള റിപ്പോർട്ട്":
-    st.header("🏘️ യൂണിറ്റ് തിരിച്ചുള്ള റിപ്പോർട്ട്")
+    st.header("🏘️️ യൂണിറ്റ് തിരിച്ചുള്ള റിപ്പോർട്ട്")
     selected_u = st.selectbox("യൂണിറ്റ് തിരഞ്ഞെടുക്കുക", ALL_UNITS)
     
     if not df_ind.empty and "യൂണിറ്റ്" in df_ind.columns:
