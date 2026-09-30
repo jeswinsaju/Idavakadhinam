@@ -167,9 +167,10 @@ if menu == "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്":
 # 5. വ്യക്തിഗത മത്സര എൻട്രി
 # -------------------------------------------------------------
 elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്രി":
-    st.header("✍️️ വ്യക്തിഗത മത്സരങ്ങൾ - രജിസ്ട്രേഷൻ")
+    st.header("✍️ വ്യക്തിഗത മത്സരങ്ങൾ - രജിസ്ട്രേഷൻ")
     
-    with st.form("ind_form", clear_on_submit=True):
+    # clear_on_submit=False ആക്കിയതിനാൽ ഫോം സ്വയം റിഫ്രഷ് ആയി ഇനങ്ങൾ അപ്രത്യക്ഷമാകില്ല
+    with st.form("ind_form", clear_on_submit=False):
         col1, col2 = st.columns(2)
         with col1:
             category_type = st.selectbox("മത്സര വിഭാഗം", ["കലാമത്സരം", "കായിക മത്സരം", "സാഹിത്യമത്സരം"])
@@ -178,7 +179,8 @@ elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്ര
             gender = st.selectbox("ലിംഗം", ["Male", "Female"])
         
         with col2:
-            dob = st.date_input("ജനന തീയതി", min_value=date(1930, 1, 1), max_value=date.today())
+            # min_value=date(1930, 1, 1) ആക്കിയതിനാൽ 60+ വയസ്സുള്ളവർക്ക് വരെ തിരഞ്ഞെടുക്കാം
+            dob = st.date_input("ജനന തീയതി", value=date(2000, 1, 1), min_value=date(1930, 1, 1), max_value=date.today())
             manager_info = st.text_input("ടീം മാനേജരുടെ പേരും ഫോൺ നമ്പറും")
 
         age_cat, age = get_age_category(dob)
@@ -229,7 +231,6 @@ elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്ര
                     st.session_state.individual_data.append(entry)
                     
                 st.success(f"വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({participant_name} - {unit})")
-                st.rerun()
 
 # -------------------------------------------------------------
 # 6. ഗ്രൂപ്പ് മത്സര എൻട്രി
@@ -237,7 +238,7 @@ elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്ര
 elif menu == "👥 ഗ്രൂപ്പ് മത്സര എൻട്രി":
     st.header("👥 ഗ്രൂപ്പ് മത്സരങ്ങൾ - രജിസ്ട്രേഷൻ")
     
-    with st.form("group_form", clear_on_submit=True):
+    with st.form("group_form", clear_on_submit=False):
         col1, col2 = st.columns(2)
         with col1:
             g_type = st.selectbox("മത്സര വിഭാഗം", ["കലാമത്സരം", "കായിക മത്സരം"])
@@ -265,7 +266,6 @@ elif menu == "👥 ഗ്രൂപ്പ് മത്സര എൻട്രി":
             else:
                 st.session_state.group_data.append(g_entry)
             st.success(f"ഗ്രൂപ്പ് എൻട്രി വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({main_unit})")
-            st.rerun()
 
 # -------------------------------------------------------------
 # 7. ഇനം തിരിച്ചുള്ള റിപ്പോർട്ട്
