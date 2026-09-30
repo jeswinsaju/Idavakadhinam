@@ -22,6 +22,7 @@ def get_gspread_client():
         "private_key": secrets["private_key"].replace('\\n', '\n'),
         "client_email": secrets["client_email"],
         "client_id": secrets["client_id"],
+        "token_uri": secrets.get("token_uri", "https://oauth2.googleapis.com/token"),
     }
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     client = gspread.authorize(creds)
