@@ -1,24 +1,56 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
-from streamlit_gsheets import GSheetsConnection
+import gspread
+from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="സെന്റ് ജോർജ്ജസ് ചർച്ച് - ഇടവക ദിന മത്സരങ്ങൾ", layout="wide")
 
 # -------------------------------------------------------------
-# Google Sheets / Local Session Data Connection
+# Google Sheets Connection Helper
 # -------------------------------------------------------------
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    df_ind = conn.read(worksheet="Individual_Data", ttl=0)
-    df_grp = conn.read(worksheet="Group_Data", ttl=0)
-except Exception:
-    if 'individual_data' not in st.session_state:
-        st.session_state.individual_data = []
-    if 'group_data' not in st.session_state:
-        st.session_state.group_data = []
-    df_ind = pd.DataFrame(st.session_state.individual_data)
-    df_grp = pd.DataFrame(st.session_state.group_data)
+def get_gspread_client():
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    secrets = st.secrets["connections"]["gsheets"]
+    creds_dict = {
+        "type": secrets["type"],
+        "project_id": secrets["project_id"],
+        "private_key_id": secrets["private_key_id"],
+        "private_key": secrets["private_key"].replace('\\n', '\n'),
+        "client_email": secrets["client_email"],
+        "client_id": secrets["client_id"],
+    }
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    client = gspread.authorize(creds)
+    sheet_url = secrets["spreadsheet"]
+    return client.open_by_url(sheet_url)
+
+def load_data(worksheet_name):
+    try:
+        sh = get_gspread_client()
+        ws = sh.worksheet(worksheet_name)
+        data = ws.get_all_records()
+        return pd.DataFrame(data)
+    except Exception as e:
+        return pd.DataFrame()
+
+def append_data(worksheet_name, row_dict):
+    sh = get_gspread_client()
+    ws = sh.worksheet(worksheet_name)
+    
+    # Check if header exists, if worksheet is completely empty
+    existing_records = ws.get_all_values()
+    if not existing_records:
+        ws.append_row(list(row_dict.keys()))
+    
+    ws.append_row(list(row_dict.values()))
+
+# Read existing data
+df_ind = load_data("Individual_Data")
+df_grp = load_data("Group_Data")
 
 # -------------------------------------------------------------
 # 1. 40 കുടുംബ യൂണിറ്റുകളുടെ ഔദ്യോഗിക ലിസ്റ്റ് (4 Zones)
@@ -169,7 +201,6 @@ if menu == "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്":
 elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്രി":
     st.header("✍️ വ്യക്തിഗത മത്സരങ്ങൾ - രജിസ്ട്രേഷൻ")
     
-    # clear_on_submit=False ആക്കിയതിനാൽ ഫോം സ്വയം റിഫ്രഷ് ആയി ഇനങ്ങൾ അപ്രത്യക്ഷമാകില്ല
     with st.form("ind_form", clear_on_submit=False):
         col1, col2 = st.columns(2)
         with col1:
@@ -179,7 +210,6 @@ elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്ര
             gender = st.selectbox("ലിംഗം", ["Male", "Female"])
         
         with col2:
-            # min_value=date(1930, 1, 1) ആക്കിയതിനാൽ 60+ വയസ്സുള്ളവർക്ക് വരെ തിരഞ്ഞെടുക്കാം
             dob = st.date_input("ജനന തീയതി", value=date(2000, 1, 1), min_value=date(1930, 1, 1), max_value=date.today())
             manager_info = st.text_input("ടീം മാനേജരുടെ പേരും ഫോൺ നമ്പറും")
 
@@ -224,13 +254,11 @@ elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്ര
                     "രജിസ്റ്റർ ചെയ്ത സമയം": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
                 
-                if 'conn' in locals():
-                    updated_df = pd.concat([df_ind, pd.DataFrame([entry])], ignore_index=True)
-                    conn.create(worksheet="Individual_Data", data=updated_df)
-                else:
-                    st.session_state.individual_data.append(entry)
-                    
-                st.success(f"വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({participant_name} - {unit})")
+                try:
+                    append_data("Individual_Data", entry)
+                    st.success(f"വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({participant_name} - {unit})")
+                except Exception as ex:
+                    st.error(f"ഡാറ്റാബേസ് സേവ് ചെയ്യുന്നതിൽ തടസ്സം നേരിട്ടു: {ex}")
 
 # -------------------------------------------------------------
 # 6. ഗ്രൂപ്പ് മത്സര എൻട്രി
@@ -260,12 +288,11 @@ elif menu == "👥 ഗ്രൂപ്പ് മത്സര എൻട്രി":
                 "ടീം മാനേജർ": manager,
                 "രജിസ്റ്റർ ചെയ്ത സമയം": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
-            if 'conn' in locals():
-                updated_g_df = pd.concat([df_grp, pd.DataFrame([g_entry])], ignore_index=True)
-                conn.create(worksheet="Group_Data", data=updated_g_df)
-            else:
-                st.session_state.group_data.append(g_entry)
-            st.success(f"ഗ്രൂപ്പ് എൻട്രി വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({main_unit})")
+            try:
+                append_data("Group_Data", g_entry)
+                st.success(f"ഗ്രൂപ്പ് എൻട്രി വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({main_unit})")
+            except Exception as ex:
+                st.error(f"ഡാറ്റാബേസ് സേവ് ചെയ്യുന്നതിൽ തടസ്സം നേരിട്ടു: {ex}")
 
 # -------------------------------------------------------------
 # 7. ഇനം തിരിച്ചുള്ള റിപ്പോർട്ട്
