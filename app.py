@@ -29,6 +29,7 @@ def get_gspread_client():
     sheet_url = secrets["spreadsheet"]
     return client.open_by_url(sheet_url)
 
+# ഡാറ്റ തത്സമയം സിങ്ക് ചെയ്യാൻ Streamlit Caching ഒഴിവാക്കി തത്സമയം ഫെച്ച് ചെയ്യുന്നു
 def load_data(worksheet_name):
     try:
         sh = get_gspread_client()
@@ -49,7 +50,7 @@ def append_data(worksheet_name, row_dict):
     
     ws.append_row(list(row_dict.values()))
 
-# Read existing data
+# Read existing data live
 df_ind = load_data("Individual_Data")
 df_grp = load_data("Group_Data")
 
@@ -159,6 +160,9 @@ def get_age_category(dob):
 st.title("⛪ സെന്റ് ജോർജ്ജസ് ചർച്ച്, മുക്കാട്ടുകര")
 st.subheader("ഇടവക ദിന കലാ-സാഹിത്യ-കായിക മത്സര പോർട്ടൽ (സെൻട്രൽ കമ്മിറ്റി)")
 
+# സിങ്ക് റീഫ്രഷ് ബട്ടൺ
+st.sidebar.button("🔄 Refresh Data", on_click=lambda: st.cache_data.clear() if hasattr(st, "cache_data") else None)
+
 menu = st.sidebar.radio("Navigation Menu", [
     "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്", 
     "✍️ വ്യക്തിഗത മത്സര എൻട്രി", 
@@ -258,6 +262,7 @@ elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്ര
                 try:
                     append_data("Individual_Data", entry)
                     st.success(f"വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({participant_name} - {unit})")
+                    st.rerun()  # തത്സമയം മറ്റെല്ലാ ടാബുകളിലും ഡാറ്റ അപ്ഡേറ്റ് ചെയ്യാൻ
                 except Exception as ex:
                     st.error(f"ഡാറ്റാബേസ് സേവ് ചെയ്യുന്നതിൽ തടസ്സം നേരിട്ടു: {ex}")
 
@@ -292,6 +297,7 @@ elif menu == "👥 ഗ്രൂപ്പ് മത്സര എൻട്രി":
             try:
                 append_data("Group_Data", g_entry)
                 st.success(f"ഗ്രൂപ്പ് എൻട്രി വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({main_unit})")
+                st.rerun()  # തത്സമയം മറ്റെല്ലാ ടാബുകളിലും ഡാറ്റ അപ്ഡേറ്റ് ചെയ്യാൻ
             except Exception as ex:
                 st.error(f"ഡാറ്റാബേസ് സേവ് ചെയ്യുന്നതിൽ തടസ്സം നേരിട്ടു: {ex}")
 
