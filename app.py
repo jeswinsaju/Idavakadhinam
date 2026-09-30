@@ -90,12 +90,12 @@ SPORTS_INDIVIDUAL = {
     "Cricket Ball Throw": ["Kiddies"],
     "1500 MTR Walking": ["Super Senior"],
     "Penalty Shootout": ["Kiddies", "Sub Junior", "Junior", "Youth", "Senior", "Super Senior"],
-    "Basket Ball Throw": ["Sub Junior", "Junior", "Youth", "Senior"],
+    "Basket Ball Throw": ["Sub Junior", "Junior", "Youth", "Senior", "Super Senior"],
     "100 Mtr. Race": ["Sub Junior", "Junior", "Youth", "Senior"],
     "200 Mtr. Race": ["Sub Junior", "Junior", "Youth", "Senior"],
     "400 Mtr. Race": ["Sub Junior", "Junior", "Youth", "Senior"],
     "Long Jump": ["Sub Junior", "Junior", "Youth", "Senior"],
-    "Shot Put": ["Sub Junior", "Junior", "Youth", "Senior"]
+    "Shot Put": ["Sub Junior", "Junior", "Youth", "Senior", "Super Senior"]
 }
 
 LITERARY_INDIVIDUAL = ["ഉപന്യാസം", "കഥ രചന", "കവിത രചന", "ക്വിസ്", "ചിത്രാങ്കനം"]
@@ -144,15 +144,15 @@ def get_age_category(dob):
     elif 36 <= age <= 55:
         return "Senior", age
     else:
+        # 56 വയസ്സിന് മുകളിലുള്ള എല്ലാവരും (70, 80 വയസ്സുള്ളവർ ഉൾപ്പെടെ) Super Senior
         return "Super Senior", age
 
 # -------------------------------------------------------------
-# 3. ആപ്പ് ഇന്റർഫേസ് & മുകളിലെ ലിങ്കുകൾ
+# 3. ആപ്പ് ഇന്റർഫേസ് & നാവിഗേഷൻ
 # -------------------------------------------------------------
 st.title("⛪ സെന്റ് ജോർജ്ജസ് ചർച്ച്, മുക്കാട്ടുകര")
 st.subheader("ഇടവക ദിന കലാ-സാഹിത്യ-കായിക മത്സര പോർട്ടൽ")
 
-# മുകളിൽ നൽകിയിരിക്കുന്ന ലിങ്ക് / ടാബുകൾ
 view_option = st.radio(
     "📌 നാവിഗേഷൻ (Navigation Links)", 
     ["✍️ രജിസ്ട്രേഷൻ ഫോം (Registration)", "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്", "📊 റിപ്പോർട്ടുകൾ (Reports)"], 
@@ -162,7 +162,7 @@ view_option = st.radio(
 st.markdown("---")
 
 # -------------------------------------------------------------
-# 4. പ്രഥമ പേജ്: രജിസ്ട്രേഷൻ ഫോം
+# 4. രജിസ്ട്രേഷൻ ഫോം
 # -------------------------------------------------------------
 if view_option == "✍️ രജിസ്ട്രേഷൻ ഫോം (Registration)":
     
@@ -181,7 +181,8 @@ if view_option == "✍️ രജിസ്ട്രേഷൻ ഫോം (Registrat
                 gender = st.selectbox("ലിംഗം", ["Male", "Female"])
             
             with col2:
-                dob = st.date_input("ജനന തീയതി", value=date(2000, 1, 1), min_value=date(1930, 1, 1), max_value=date.today())
+                # min_value 1910 ആക്കിയത് വഴി ഏത് മുതിർന്ന വ്യക്തികൾക്കും (1970s / older) ജനന തീയതി തിരഞ്ഞെടുക്കാം
+                dob = st.date_input("ജനന തീയതി", value=date(1980, 1, 1), min_value=date(1910, 1, 1), max_value=date.today())
                 manager_info = st.text_input("ടീം മാനേജരുടെ പേരും ഫോൺ നമ്പറും")
 
             age_cat, age = get_age_category(dob)
@@ -262,7 +263,7 @@ if view_option == "✍️ രജിസ്ട്രേഷൻ ഫോം (Registrat
                     st.error(f"ഡാറ്റാബേസ് സേവ് ചെയ്യുന്നതിൽ തടസ്സം നേരിട്ടു: {ex}")
 
 # -------------------------------------------------------------
-# 5. ഡാഷ്‌ബോർഡ്
+# 5. സെൻട്രൽ ഡാഷ്‌ബോർഡ്
 # -------------------------------------------------------------
 elif view_option == "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്":
     st.header("📌 സെൻട്രൽ കമ്മിറ്റി ഡാഷ്‌ബോർഡ്")
@@ -275,27 +276,35 @@ elif view_option == "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്":
     c1.metric("ആകെ വ്യക്തിഗത എൻട്രികൾ", len(df_ind) if not df_ind.empty else 0)
     c2.metric("ആകെ ഗ്രൂപ്പ് എൻട്രികൾ", len(df_grp) if not df_grp.empty else 0)
     
-    registered_units = df_ind["യൂണിറ്റ്"].nunique() if not df_ind.empty and "യൂണിറ്റ്" in df_ind.columns else 0
+    reg_unit_col = "യൂണിറ്റ്" if ("യൂണിറ്റ്" in df_ind.columns) else ("Unit" if "Unit" in df_ind.columns else None)
+    registered_units = df_ind[reg_unit_col].nunique() if (not df_ind.empty and reg_unit_col) else 0
     c3.metric("രജിസ്റ്റർ ചെയ്ത യൂണിറ്റുകൾ", f"{registered_units} / 40")
 
     st.markdown("---")
-    st.subheader("🏘️️ 40 യൂണിറ്റുകളുടെ ലിസ്റ്റും രജിസ്ട്രേഷൻ നിലയും")
+    st.subheader("🏘️️ 40 യൂണിറ്റുകളുടെ മേഖല തിരിച്ചുളള രജിസ്ട്രേഷൻ വിവരങ്ങൾ")
     
+    # Zone wise Data Generation Fix
     col1, col2 = st.columns(2)
     zones = list(UNITS_BY_ZONE.items())
     
+    # Map counts from DataFrame safely
+    ind_counts = {}
+    if not df_ind.empty and reg_unit_col:
+        # Standardize strings to avoid space issues
+        df_ind_clean = df_ind[reg_unit_col].astype(str).str.strip()
+        ind_counts = df_ind_clean.value_counts().to_dict()
+
     for i, (zone_name, units) in enumerate(zones):
         target_col = col1 if i % 2 == 0 else col2
         with target_col:
             st.markdown(f"#### 📍 {zone_name}")
-            zone_df = pd.DataFrame({"യൂണിറ്റിന്റെ പേര്": units})
             
-            if not df_ind.empty and "യൂണിറ്റ്" in df_ind.columns:
-                reg_counts = df_ind["യൂണിറ്റ്"].value_counts().to_dict()
-                zone_df["വ്യക്തിഗത എൻട്രികൾ"] = zone_df["യൂണിറ്റിന്റെ പേര്"].map(reg_counts).fillna(0).astype(int)
-            else:
-                zone_df["വ്യക്തിഗത എൻട്രികൾ"] = 0
-                
+            zone_data = []
+            for u in units:
+                count = ind_counts.get(u.strip(), 0)
+                zone_data.append({"യൂണിറ്റിന്റെ പേര്": u, "വ്യക്തിഗത എൻട്രികൾ": count})
+            
+            zone_df = pd.DataFrame(zone_data)
             st.dataframe(zone_df, use_container_width=True, hide_index=True)
 
 # -------------------------------------------------------------
@@ -328,8 +337,10 @@ elif view_option == "📊 റിപ്പോർട്ടുകൾ (Reports)":
 
     with tab3:
         selected_u = st.selectbox("യൂണിറ്റ് തിരഞ്ഞെടുക്കുക", ALL_UNITS)
-        if not df_ind.empty and "യൂണിറ്റ്" in df_ind.columns:
-            unit_filtered = df_ind[df_ind["യൂണിറ്റ്"] == selected_u]
+        reg_unit_col = "യൂണിറ്റ്" if ("യൂണിറ്റ്" in df_ind.columns) else ("Unit" if "Unit" in df_ind.columns else None)
+        
+        if not df_ind.empty and reg_unit_col:
+            unit_filtered = df_ind[df_ind[reg_unit_col].astype(str).str.strip() == selected_u.strip()]
             st.write(f"**{selected_u}** യൂണിറ്റിൽ നിന്നും വന്ന ആകെ വ്യക്തിഗത അപേക്ഷകൾ: **{len(unit_filtered)}**")
             if not unit_filtered.empty:
                 st.dataframe(unit_filtered, use_container_width=True)
