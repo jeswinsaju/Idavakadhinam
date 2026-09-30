@@ -29,26 +29,22 @@ def get_gspread_client():
     sheet_url = secrets["spreadsheet"]
     return client.open_by_url(sheet_url)
 
-def fetch_all_data():
-    """ഗൂഗിൾ ഷീറ്റിൽ നിന്നും അല്ലെങ്കിൽ സെഷനിൽ നിന്നും തത്സമയം ഡാറ്റ റീഡ് ചെയ്യുന്നു"""
+def fetch_live_data():
+    """ഗൂഗിൾ ഷീറ്റിൽ നിന്ന് ഡാറ്റ നേരിട്ട് വായിക്കുന്നു"""
     try:
         sh = get_gspread_client()
         
         ws_ind = sh.worksheet("Individual_Data")
-        ind_data = ws_ind.get_all_records()
-        df_ind = pd.DataFrame(ind_data)
+        ind_records = ws_ind.get_all_records()
+        df_ind = pd.DataFrame(ind_records)
         
         ws_grp = sh.worksheet("Group_Data")
-        grp_data = ws_grp.get_all_records()
-        df_grp = pd.DataFrame(grp_data)
+        grp_records = ws_grp.get_all_records()
+        df_grp = pd.DataFrame(grp_records)
         
         return df_ind, df_grp
     except Exception as e:
-        if 'df_ind' not in st.session_state:
-            st.session_state.df_ind = pd.DataFrame()
-        if 'df_grp' not in st.session_state:
-            st.session_state.df_grp = pd.DataFrame()
-        return st.session_state.df_ind, st.session_state.df_grp
+        return pd.DataFrame(), pd.DataFrame()
 
 def append_data(worksheet_name, row_dict):
     sh = get_gspread_client()
@@ -58,8 +54,14 @@ def append_data(worksheet_name, row_dict):
         ws.append_row(list(row_dict.keys()))
     ws.append_row(list(row_dict.values()))
 
-# Load latest live data
-df_ind, df_grp = fetch_all_data()
+# Initialize Session State Data
+if 'df_ind' not in st.session_state or 'df_grp' not in st.session_state or st.sidebar.button("🔄 ഡാറ്റ പുതുക്കുക (Refresh Data)"):
+    df_ind_fetched, df_grp_fetched = fetch_live_data()
+    st.session_state.df_ind = df_ind_fetched
+    st.session_state.df_grp = df_grp_fetched
+
+df_ind = st.session_state.df_ind
+df_grp = st.session_state.df_grp
 
 # -------------------------------------------------------------
 # 1. 40 കുടുംബ യൂണിറ്റുകളുടെ ഔദ്യോഗിക ലിസ്റ്റ് (4 Zones)
@@ -167,9 +169,6 @@ def get_age_category(dob):
 st.title("⛪ സെന്റ് ജോർജ്ജസ് ചർച്ച്, മുക്കാട്ടുകര")
 st.subheader("ഇടവക ദിന കലാ-സാഹിത്യ-കായിക മത്സര പോർട്ടൽ (സെൻട്രൽ കമ്മിറ്റി)")
 
-if st.sidebar.button("🔄 Data Force Refresh"):
-    st.rerun()
-
 menu = st.sidebar.radio("Navigation Menu", [
     "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്", 
     "✍️ വ്യക്തിഗത മത്സര എൻട്രി", 
@@ -193,11 +192,13 @@ if menu == "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്":
     st.markdown("---")
     st.subheader("🏘️ 40 യൂണിറ്റുകളുടെ ലിസ്റ്റും രജിസ്ട്രേഷൻ നിലയും")
     
-    zone_cols = st.columns(2)
-    col_idx = 0
-    for zone_name, units in UNITS_BY_ZONE.items():
-        with zone_cols[col_idx % 2]:
-            st.write(f"### 📍 {zone_name}")
+    col1, col2 = st.columns(2)
+    zones = list(UNITS_BY_ZONE.items())
+    
+    for i, (zone_name, units) in enumerate(zones):
+        target_col = col1 if i % 2 == 0 else col2
+        with target_col:
+            st.markdown(f"#### 📍 {zone_name}")
             zone_df = pd.DataFrame({"യൂണിറ്റിന്റെ പേര്": units})
             
             if not df_ind.empty and "യൂണിറ്റ്" in df_ind.columns:
@@ -207,7 +208,6 @@ if menu == "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്":
                 zone_df["വ്യക്തിഗത എൻട്രികൾ"] = 0
                 
             st.dataframe(zone_df, use_container_width=True, hide_index=True)
-        col_idx += 1
 
 # -------------------------------------------------------------
 # 5. വ്യക്തിഗത മത്സര എൻട്രി
@@ -215,7 +215,7 @@ if menu == "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്":
 elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്രി":
     st.header("✍️ വ്യക്തിഗത മത്സരങ്ങൾ - രജിസ്ട്രേഷൻ")
     
-    with st.form("ind_form", clear_on_submit=False):
+    with st.form("ind_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
             category_type = st.selectbox("മത്സര വിഭാഗം", ["കലാമത്സരം", "കായിക മത്സരം", "സാഹിത്യമത്സരം"])
@@ -270,6 +270,9 @@ elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്ര
                 
                 try:
                     append_data("Individual_Data", entry)
+                    # Sync to Session State Immediately
+                    new_df = pd.DataFrame([entry])
+                    st.session_state.df_ind = pd.concat([st.session_state.df_ind, new_df], ignore_index=True)
                     st.success(f"വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({participant_name} - {unit})")
                     st.rerun()
                 except Exception as ex:
@@ -281,7 +284,7 @@ elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്ര
 elif menu == "👥 ഗ്രൂപ്പ് മത്സര എൻട്രി":
     st.header("👥 ഗ്രൂപ്പ് മത്സരങ്ങൾ - രജിസ്ട്രേഷൻ")
     
-    with st.form("group_form", clear_on_submit=False):
+    with st.form("group_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
             g_type = st.selectbox("മത്സര വിഭാഗം", ["കലാമത്സരം", "കായിക മത്സരം"])
@@ -305,6 +308,9 @@ elif menu == "👥 ഗ്രൂപ്പ് മത്സര എൻട്രി":
             }
             try:
                 append_data("Group_Data", g_entry)
+                # Sync to Session State Immediately
+                new_grp = pd.DataFrame([g_entry])
+                st.session_state.df_grp = pd.concat([st.session_state.df_grp, new_grp], ignore_index=True)
                 st.success(f"ഗ്രൂപ്പ് എൻട്രി വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({main_unit})")
                 st.rerun()
             except Exception as ex:
@@ -338,7 +344,7 @@ elif menu == "📊 ഇനം തിരിച്ചുള്ള റിപ്പ�
 # 8. യൂണിറ്റ് തിരിച്ചുള്ള റിപ്പോർട്ട്
 # -------------------------------------------------------------
 elif menu == "🏘️ യൂണിറ്റ് തിരിച്ചുള്ള റിപ്പോർട്ട്":
-    st.header("🏘️️ യൂണിറ്റ് തിരിച്ചുള്ള റിപ്പോർട്ട്")
+    st.header("🏘️ യൂണിറ്റ് തിരിച്ചുള്ള റിപ്പോർട്ട്")
     selected_u = st.selectbox("യൂണിറ്റ് തിരഞ്ഞെടുക്കുക", ALL_UNITS)
     
     if not df_ind.empty and "യൂണിറ്റ്" in df_ind.columns:
