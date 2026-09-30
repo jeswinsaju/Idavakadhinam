@@ -5,11 +5,13 @@ from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="സെന്റ് ജോർജ്ജസ് ചർച്ച് - ഇടവക ദിന മത്സരങ്ങൾ", layout="wide")
 
-# Google Sheets കണക്ഷൻ സജ്ജീകരിക്കൽ
+# -------------------------------------------------------------
+# Google Sheets / Local Session Data Connection
+# -------------------------------------------------------------
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    df_ind = conn.read(worksheet="Individual_Data", ttl=5)
-    df_grp = conn.read(worksheet="Group_Data", ttl=5)
+    df_ind = conn.read(worksheet="Individual_Data", ttl=0)
+    df_grp = conn.read(worksheet="Group_Data", ttl=0)
 except Exception:
     if 'individual_data' not in st.session_state:
         st.session_state.individual_data = []
@@ -21,7 +23,6 @@ except Exception:
 # -------------------------------------------------------------
 # 1. 40 കുടുംബ യൂണിറ്റുകളുടെ ഔദ്യോഗിക ലിസ്റ്റ് (4 Zones)
 # -------------------------------------------------------------
-
 UNITS_BY_ZONE = {
     "ST MATHEW ZONE": [
         "ALL SAINTS", "ST. ALPHONSA", "DON BOSCO", "ST MARYS", "LOURDMATHA",
@@ -43,13 +44,11 @@ UNITS_BY_ZONE = {
     ]
 }
 
-# 40 യൂണിറ്റുകളുടെയും ഒറ്റ ലിസ്റ്റ്
 ALL_UNITS = [unit for units in UNITS_BY_ZONE.values() for unit in units]
 
 # -------------------------------------------------------------
 # 2. മാപ്പിംഗ് & വാലിഡേഷൻ റൂളുകൾ
 # -------------------------------------------------------------
-
 ARTS_INDIVIDUAL = {
     "പ്രച്ഛന്നവേഷം (FANCY DRESS)": ["Kiddies", "Sub Junior", "Junior"],
     "നാടോടിനൃത്തം (FOLK DANCE)": ["Kiddies", "Sub Junior", "Junior", "Youth"],
@@ -124,7 +123,6 @@ def get_age_category(dob):
 # -------------------------------------------------------------
 # 3. ആപ്പ് ഇന്റർഫേസ്
 # -------------------------------------------------------------
-
 st.title("⛪ സെന്റ് ജോർജ്ജസ് ചർച്ച്, മുക്കാട്ടുകര")
 st.subheader("ഇടവക ദിന കലാ-സാഹിത്യ-കായിക മത്സര പോർട്ടൽ (സെൻട്രൽ കമ്മിറ്റി)")
 
@@ -169,7 +167,7 @@ if menu == "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്":
 # 5. വ്യക്തിഗത മത്സര എൻട്രി
 # -------------------------------------------------------------
 elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്രി":
-    st.header("✍️ വ്യക്തിഗത മത്സരങ്ങൾ - രജിസ്ട്രേഷൻ")
+    st.header("✍️️ വ്യക്തിഗത മത്സരങ്ങൾ - രജിസ്ട്രേഷൻ")
     
     with st.form("ind_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
@@ -226,11 +224,12 @@ elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്ര
                 
                 if 'conn' in locals():
                     updated_df = pd.concat([df_ind, pd.DataFrame([entry])], ignore_index=True)
-                    conn.update(worksheet="Individual_Data", data=updated_df)
+                    conn.create(worksheet="Individual_Data", data=updated_df)
                 else:
                     st.session_state.individual_data.append(entry)
                     
                 st.success(f"വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({participant_name} - {unit})")
+                st.rerun()
 
 # -------------------------------------------------------------
 # 6. ഗ്രൂപ്പ് മത്സര എൻട്രി
@@ -262,10 +261,11 @@ elif menu == "👥 ഗ്രൂപ്പ് മത്സര എൻട്രി":
             }
             if 'conn' in locals():
                 updated_g_df = pd.concat([df_grp, pd.DataFrame([g_entry])], ignore_index=True)
-                conn.update(worksheet="Group_Data", data=updated_g_df)
+                conn.create(worksheet="Group_Data", data=updated_g_df)
             else:
                 st.session_state.group_data.append(g_entry)
             st.success(f"ഗ്രൂപ്പ് എൻട്രി വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({main_unit})")
+            st.rerun()
 
 # -------------------------------------------------------------
 # 7. ഇനം തിരിച്ചുള്ള റിപ്പോർട്ട്
