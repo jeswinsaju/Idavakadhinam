@@ -29,22 +29,16 @@ def get_gspread_client():
     sheet_url = secrets["spreadsheet"]
     return client.open_by_url(sheet_url)
 
-def fetch_live_data():
-    """ഗൂഗിൾ ഷീറ്റിൽ നിന്ന് ഡാറ്റ നേരിട്ട് വായിക്കുന്നു"""
+# ttl=0 കൊടുക്കുന്നതിനാൽ ഓരോ പേജ് സ്വിച്ച് ചെയ്യുമ്പോഴും ഏറ്റവും പുതിയ ഡാറ്റ തത്സമയം ഷീറ്റിൽ നിന്ന് ലോഡ് ആകും
+@st.cache_data(ttl=0)
+def fetch_worksheet_data(worksheet_name):
     try:
         sh = get_gspread_client()
-        
-        ws_ind = sh.worksheet("Individual_Data")
-        ind_records = ws_ind.get_all_records()
-        df_ind = pd.DataFrame(ind_records)
-        
-        ws_grp = sh.worksheet("Group_Data")
-        grp_records = ws_grp.get_all_records()
-        df_grp = pd.DataFrame(grp_records)
-        
-        return df_ind, df_grp
+        ws = sh.worksheet(worksheet_name)
+        records = ws.get_all_records()
+        return pd.DataFrame(records)
     except Exception as e:
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame()
 
 def append_data(worksheet_name, row_dict):
     sh = get_gspread_client()
@@ -54,14 +48,9 @@ def append_data(worksheet_name, row_dict):
         ws.append_row(list(row_dict.keys()))
     ws.append_row(list(row_dict.values()))
 
-# Initialize Session State Data
-if 'df_ind' not in st.session_state or 'df_grp' not in st.session_state or st.sidebar.button("🔄 ഡാറ്റ പുതുക്കുക (Refresh Data)"):
-    df_ind_fetched, df_grp_fetched = fetch_live_data()
-    st.session_state.df_ind = df_ind_fetched
-    st.session_state.df_grp = df_grp_fetched
-
-df_ind = st.session_state.df_ind
-df_grp = st.session_state.df_grp
+# Read Live Data directly from sheets
+df_ind = fetch_worksheet_data("Individual_Data")
+df_grp = fetch_worksheet_data("Group_Data")
 
 # -------------------------------------------------------------
 # 1. 40 കുടുംബ യൂണിറ്റുകളുടെ ഔദ്യോഗിക ലിസ്റ്റ് (4 Zones)
@@ -270,9 +259,7 @@ elif menu == "✍️ വ്യക്തിഗത മത്സര എൻട്ര
                 
                 try:
                     append_data("Individual_Data", entry)
-                    # Sync to Session State Immediately
-                    new_df = pd.DataFrame([entry])
-                    st.session_state.df_ind = pd.concat([st.session_state.df_ind, new_df], ignore_index=True)
+                    st.cache_data.clear() # Clear cache to fetch updated data instantly
                     st.success(f"വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({participant_name} - {unit})")
                     st.rerun()
                 except Exception as ex:
@@ -308,9 +295,7 @@ elif menu == "👥 ഗ്രൂപ്പ് മത്സര എൻട്രി":
             }
             try:
                 append_data("Group_Data", g_entry)
-                # Sync to Session State Immediately
-                new_grp = pd.DataFrame([g_entry])
-                st.session_state.df_grp = pd.concat([st.session_state.df_grp, new_grp], ignore_index=True)
+                st.cache_data.clear() # Clear cache to fetch updated data instantly
                 st.success(f"ഗ്രൂപ്പ് എൻട്രി വിജയകരമായി രജിസ്റ്റർ ചെയ്തു! ({main_unit})")
                 st.rerun()
             except Exception as ex:
