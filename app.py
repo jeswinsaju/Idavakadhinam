@@ -1,3 +1,264 @@
+
+Yes. The problem is in the age-category logic, not the DOB picker itself.
+
+Your current code already allows DOB back to 1910, but get_age_category() puts everyone above 55 into "Super Senior". That part is actually suitable if Super Senior means 56+. The more important issue is that your competition may allow participants above 55, so the category should explicitly support 56+ rather than imposing an upper age limit.
+
+I recommend changing the age logic to make the categories explicit and future-proof.
+
+Replace your current get_age_category() with this
+def get_age_category(dob):
+    """
+    Calculate participant age and competition age category.
+
+    Competition categories:
+    0–5   : Kiddies
+    6–10  : Sub Junior
+    11–15 : Junior
+    16–35 : Youth
+    36–55 : Senior
+    56+   : Super Senior
+
+    There is NO upper age limit.
+    Participants older than 55 are therefore eligible as Super Senior.
+    """
+
+    today = date.today()
+
+    age = today.year - dob.year - (
+        (today.month, today.day) < (dob.month, dob.day)
+    )
+
+    if age <= 5:
+        return "Kiddies", age
+
+    elif age <= 10:
+        return "Sub Junior", age
+
+    elif age <= 15:
+        return "Junior", age
+
+    elif age <= 35:
+        return "Youth", age
+
+    elif age <= 55:
+        return "Senior", age
+
+    else:
+        # 56 years and above
+        return "Super Senior", age
+Also change the DOB field
+Your current DOB field is:
+
+dob = st.date_input(
+    "ജനന തീയതി (DOB) *",
+    value=date(2010, 1, 1),
+    min_value=date(1910, 1, 1),
+    max_value=date.today(),
+    key=f"dob_{i}",
+)
+I recommend changing the minimum date to 1900, so there is definitely no artificial upper-age restriction:
+
+dob = st.date_input(
+    "ജനന തീയതി (DOB) *",
+    value=date(2010, 1, 1),
+    min_value=date(1900, 1, 1),
+    max_value=date.today(),
+    key=f"dob_{i}",
+)
+Your competition categories will then work like this
+Participant age	Category
+0–5	Kiddies
+6–10	Sub Junior
+11–15	Junior
+16–35	Youth
+36–55	Senior
+56 and above	Super Senior
+So, for example:
+
+Born in 1960 → age 66 → Super Senior
+
+Born in 1950 → age 76 → Super Senior
+
+Born in 1940 → age 86 → Super Senior
+
+Born in 1930 → age 96 → Super Senior
+
+There is no maximum age.
+
+One more important point
+Your event definitions already allow "Super Senior" for some competitions:
+
+"ലളിത ഗാനം (LIGHT MUSIC)": [
+    "Sub Junior", "Junior", "Youth", "Senior", "Super Senior"
+]
+and:
+
+"Shot Put": [
+    "Sub Junior", "Junior", "Youth", "Senior", "Super Senior"
+]
+So once the age calculation is corrected, a 56+ participant will automatically see the events that permit Super Senior.
+
+However, your current "Penalty Shootout" also allows Super Senior, while "1500 MTR Walking" only allows Super Senior. This means the event eligibility is controlled separately by ARTS_INDIVIDUAL and SPORTS_INDIVIDUAL, which is good.
+
+If your actual competition rule is Super Senior = 56+, the above fix is sufficient.
+
+
+i need updated app.py code
+
+Absolutely. The required fix is:
+
+0–5 → Kiddies
+
+6–10 → Sub Junior
+
+11–15 → Junior
+
+16–35 → Youth
+
+36–55 → Senior
+
+56+ → Super Senior
+
+No maximum age limit
+
+DOB can be selected from 1900 onward
+
+You do not need to change the Google Sheets or dashboard sections.
+
+Updated app.py
+In your existing app.py, replace the entire get_age_category() function with this:
+
+def get_age_category(dob):
+    """
+    Calculate participant age and competition age category.
+
+    Competition categories:
+        0–5   : Kiddies
+        6–10  : Sub Junior
+        11–15 : Junior
+        16–35 : Youth
+        36–55 : Senior
+        56+   : Super Senior
+
+    There is NO upper age limit.
+    """
+
+    today = date.today()
+
+    age = today.year - dob.year - (
+        (today.month, today.day) < (dob.month, dob.day)
+    )
+
+    if age <= 5:
+        return "Kiddies", age
+
+    elif age <= 10:
+        return "Sub Junior", age
+
+    elif age <= 15:
+        return "Junior", age
+
+    elif age <= 35:
+        return "Youth", age
+
+    elif age <= 55:
+        return "Senior", age
+
+    else:
+        # 56 years and above
+        return "Super Senior", age
+Then replace the DOB section inside your individual participant loop.
+
+Replace this
+dob = st.date_input(
+    "ജനന തീയതി (DOB) *",
+    value=date(2010, 1, 1),
+    min_value=date(1910, 1, 1),
+    max_value=date.today(),
+    key=f"dob_{i}",
+)
+With this
+dob = st.date_input(
+    "ജനന തീയതി (DOB) *",
+    value=date(2010, 1, 1),
+    min_value=date(1900, 1, 1),
+    max_value=date.today(),
+    key=f"dob_{i}",
+)
+Your existing code immediately below it can remain unchanged:
+
+age_cat, age = get_age_category(dob)
+and:
+
+if cat_type == "കലാമത്സരം":
+    eligible = [
+        k for k, v in ARTS_INDIVIDUAL.items()
+        if age_cat in v
+    ]
+elif cat_type == "കായിക മത്സരം":
+    eligible = [
+        k for k, v in SPORTS_INDIVIDUAL.items()
+        if age_cat in v
+    ]
+else:
+    eligible = LITERARY_INDIVIDUAL
+Important result
+For example, in 2026:
+
+DOB	Age	Category
+2022	4	Kiddies
+2017	9	Sub Junior
+2012	14	Junior
+2000	26	Youth
+1980	46	Senior
+1970	56	Super Senior
+1960	66	Super Senior
+1950	76	Super Senior
+1940	86	Super Senior
+1930	96	Super Senior
+So a participant aged 56, 70, 80, 90, or even 100 can be registered. There is no upper age restriction.
+
+One correction to your earlier wording: your current code was not actually restricting DOB to 1999. The min_value=date(1910, 1, 1) already allowed older participants. The important part is making the 56+ category explicitly unlimited, which the updated function now does.
+
+If you want, I can also restructure your complete app.py into a cleaner Dashboard v3.0 so the central dashboard correctly handles units such as ALL SAINTS and doesn't incorrectly show “no entries” when data exists.
+
+
+yes i need updated full code
+
+Yes. Below is the complete updated app.py based on your code, with the age correction included.
+
+I have also made a few stability improvements while keeping your existing Google Sheets structure and dashboard design:
+
+✅ 56+ = Super Senior with no upper age limit
+
+✅ DOB selectable from 1900
+
+✅ Better unit matching for ALL SAINTS and other units
+
+✅ Group പ്രധാന യൂണിറ്റ് + ക്ലസ്റ്റർ യൂണിറ്റുകൾ matching
+
+✅ Dashboard correctly derives unit/zone
+
+✅ Individual and Group counts remain separate
+
+✅ Better empty-data handling
+
+✅ Refresh button
+
+✅ Google connection diagnostics
+
+✅ CSV downloads
+
+✅ Recent registrations
+
+✅ Detailed unit view
+
+✅ No fake "auto refresh" claim
+
+✅ Syntax corrected and ready for streamlit run app.py
+
+Save the following as app.py.
+
 import streamlit as st
 import pandas as pd
 import re
@@ -2865,3 +3126,25 @@ else:
 
                 hide_index=True,
             )
+The important age change
+The new code uses:
+
+elif age <= 55:
+    return "Senior", age
+else:
+    return "Super Senior", age
+Therefore:
+
+56+ has no upper limit.
+
+For example, if someone born in 1950 registers in 2026, the system calculates approximately 76 years → Super Senior and displays the events available for Super Senior.
+
+Run it
+From your project folder:
+
+python -m streamlit run app.py
+If you are using Streamlit Cloud, replace the existing app.py with this version and redeploy.
+
+One important thing: your current event configuration means that not every event is available to Super Seniors. The age calculation now correctly identifies them as Super Senior, but they will only see events where "Super Senior" is included in ARTS_INDIVIDUAL or SPORTS_INDIVIDUAL.
+
+
