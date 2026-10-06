@@ -591,11 +591,27 @@ else:
     )
 
     unit_col_grp = find_column(
-        df_grp, ["പ്രധാന യൂണിറ്റ്", "യൂണിറ്റ്", "unit"]
+        df_grp,
+        [
+            "പ്രധാന യൂണിറ്റ്",
+            "പ്രധാന യൂണിറ്റ് പേര്",
+            "യൂണിറ്റ്",
+            "unit",
+            "main unit",
+            "main_unit",
+        ],
     )
     events_col_grp = find_column(
         df_grp, ["ഇനത്തിന്റെ പേര്", "event", "ഇനം"]
     )
+
+    with st.expander("🔎 Data Diagnostics", expanded=False):
+        st.write(f"Individual_Data rows loaded: **{len(df_ind)}**")
+        st.write(f"Group_Data rows loaded: **{len(df_grp)}**")
+        if not df_ind.empty:
+            st.write("Individual_Data columns:", list(df_ind.columns))
+        if not df_grp.empty:
+            st.write("Group_Data columns:", list(df_grp.columns))
 
     tab1, tab2, tab3 = st.tabs([
         "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്",
@@ -737,7 +753,24 @@ else:
                 f"#### 👤 {selected_unit_view} - വ്യക്തിഗത എൻട്രികൾ"
             )
 
-            if not df_ind.empty and unit_col_ind:
+            # ---------------- INDIVIDUAL ----------------
+            if df_ind.empty:
+                st.info(
+                    f"ℹ️ Individual_Data sheet-ൽ ഇപ്പോൾ ഡാറ്റ ഇല്ല."
+                )
+            elif not unit_col_ind:
+                st.warning(
+                    "⚠️ Individual_Data-ൽ യൂണിറ്റ് column കണ്ടെത്താനായില്ല."
+                )
+                st.caption(
+                    "ലഭ്യമായ columns: " + ", ".join(map(str, df_ind.columns))
+                )
+                st.dataframe(
+                    df_ind,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
                 matched_ind = df_ind[
                     df_ind[unit_col_ind]
                     .fillna("")
@@ -756,16 +789,32 @@ else:
                         f"ℹ️ {selected_unit_view} യൂണിറ്റിൽ "
                         "വ്യക്തിഗത രജിസ്ട്രേഷൻ ഒന്നുമില്ല."
                     )
-            else:
-                st.warning(
-                    "⚠️ Individual_Data-ൽ ഡാറ്റ ലഭ്യമല്ല."
-                )
 
             st.markdown(
                 f"#### 👥 {selected_unit_view} - ഗ്രൂപ്പ് എൻട്രികൾ"
             )
 
-            if not df_grp.empty and unit_col_grp:
+            # IMPORTANT:
+            # Never call an existing Group_Data sheet "empty" merely
+            # because the unit column was not detected.
+            if df_grp.empty:
+                st.info(
+                    "ℹ️ Group_Data sheet-ൽ ഇപ്പോൾ ഡാറ്റ ഇല്ല."
+                )
+            elif not unit_col_grp:
+                st.warning(
+                    "⚠️ Group_Data-ൽ യൂണിറ്റ് column കണ്ടെത്താനായില്ല."
+                )
+                st.caption(
+                    "ലഭ്യമായ Group_Data columns: "
+                    + ", ".join(map(str, df_grp.columns))
+                )
+                st.dataframe(
+                    df_grp,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
                 matched_grp = df_grp[
                     df_grp[unit_col_grp]
                     .fillna("")
@@ -784,10 +833,6 @@ else:
                         f"ℹ️ {selected_unit_view} യൂണിറ്റിൽ "
                         "ഗ്രൂപ്പ് രജിസ്ട്രേഷൻ ഒന്നുമില്ല."
                     )
-            else:
-                st.warning(
-                    "⚠️ Group_Data-ൽ ഡാറ്റ ലഭ്യമല്ല."
-                )
 
     # ---------------------------------------------------------
     # INDIVIDUAL REPORT
