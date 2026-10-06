@@ -313,6 +313,114 @@ st.markdown("---")
 # =============================================================
 # REGISTRATION PAGE
 # =============================================================
+def _norm(value):
+    """Normalize text for reliable matching across Google Sheet variations."""
+    if value is None:
+        return ""
+    return re.sub(r"[^a-z0-9]+", "", str(value).strip().lower())
+
+
+def _split_values(value):
+    """Split comma/semicolon/newline separated sheet values."""
+    if value is None:
+        return []
+    return [
+        str(x).strip()
+        for x in re.split(r"[,;\n|]+", str(value))
+        if str(x).strip()
+    ]
+
+
+def _row_has_unit(row, unit_name, preferred_col=None):
+    """
+    Robust unit matching.
+    First checks the known unit column. If that fails/is unavailable,
+    checks all text cells so dashboard remains usable with differently
+    named Google Sheet columns.
+    """
+    target = _norm(unit_name)
+    if not target:
+        return False
+
+    columns = []
+    if preferred_col and preferred_col in row.index:
+        columns.append(preferred_col)
+
+    columns.extend([c for c in row.index if c not in columns])
+
+    for col in columns:
+        value = row.get(col, "")
+        if value is None:
+            continue
+
+        # Exact/split match first.
+        parts = _split_values(value)
+        if any(_norm(part) == target for part in parts):
+            return True
+
+        # For a normal single-cell value.
+        if _norm(value) == target:
+            return True
+
+    return False
+
+
+def _rows_for_unit(df, unit_name, preferred_col=None):
+    if df.empty:
+        return df.copy()
+
+    mask = df.apply(
+        lambda row: _row_has_unit(row, unit_name, preferred_col),
+        axis=1,
+    )
+    return df.loc[mask].copy()
+
+
+def _derive_unit(row, preferred_col=None):
+    """Return the first recognized parish unit contained in a row."""
+    if preferred_col and preferred_col in row.index:
+        preferred = str(row.get(preferred_col, "")).strip()
+        for unit in ALL_UNITS:
+            if _norm(preferred) == _norm(unit):
+                return unit
+
+    for unit in ALL_UNITS:
+        if _row_has_unit(row, unit, preferred_col):
+            return unit
+
+    return "UNKNOWN"
+
+
+def _prepare_dashboard_data(df, preferred_unit_col):
+    if df.empty:
+        return df.copy()
+
+    work = df.copy()
+    work["__Dashboard Unit"] = work.apply(
+        lambda row: _derive_unit(row, preferred_unit_col),
+        axis=1,
+    )
+    work["__Dashboard Zone"] = work["__Dashboard Unit"].apply(
+        lambda u: get_zone_for_unit(u) if u != "UNKNOWN" else "UNKNOWN"
+    )
+    return work
+
+
+def _event_counts(df, event_col, prefix=""):
+    counts = {}
+    if df.empty or not event_col:
+        return counts
+
+    for value in df[event_col].fillna(""):
+        for event in _split_values(value):
+            if event:
+                label = f"{prefix}{event}" if prefix else event
+                counts[label] = counts.get(label, 0) + 1
+
+    return counts
+
+
+
 if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Single / Group)":
 
     st.header("📝 പുതിയ അപേക്ഷ സമർപ്പിക്കുക")
@@ -549,335 +657,573 @@ if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Sing
 
 
 # =============================================================
-# DASHBOARD
+# DASHBOARD - CENTRAL COMMAND CENTER
 # =============================================================
-else:
-    st.header("📊 സമഗ്ര ലൈവ് ഡാഷ്‌ബോർഡ്")
 
-    c1, c2 = st.columns([1, 5])
-    with c1:
-        if st.button("🔄 ഡാറ്റ പുതുക്കുക", use_container_width=True):
+else:
+    st.header("📊 സെൻട്രൽ ഡാഷ്‌ബോർഡ്")
+    st.caption(
+        "⛪ St. George Parish Day • Live Registration Command Center"
+    )
+
+    # ---------------------------------------------------------
+    # ACTION BAR
+    # ---------------------------------------------------------
+    action1, action2, action3, action4 = st.columns([1.2, 1.2, 1.2, 3])
+
+    with action1:
+        if st.button("🔄 Refresh", use_container_width=True):
+            st.cache_data.clear()
             st.rerun()
 
-    # Always show connection/data status rather than silently hiding errors.
-    with st.spinner("Google Sheets-ൽ നിന്ന് ലൈവ് വിവരങ്ങൾ ശേഖരിക്കുന്നു..."):
+    with action2:
+        if st.button("🔌 Test Connection", use_container_width=True):
+            ok, result = test_google_connection()
+            if ok:
+                st.success(f"Connected: {result}")
+            else:
+                st.error("Google Sheets connection failed.")
+                st.code(result)
+
+    with action3:
+        auto_refresh = st.toggle("Auto refresh", value=False)
+
+    with action4:
+        st.info(
+            "Dashboard reads Individual_Data and Group_Data directly from Google Sheets."
+        )
+
+    if auto_refresh:
+        # Streamlit reruns only when the page receives a new event; this
+        # message avoids pretending that a background scheduler is active.
+        st.caption(
+            "🔄 Auto refresh is enabled. Use the Refresh button whenever you "
+            "want an immediate live reload."
+        )
+
+    # ---------------------------------------------------------
+    # LOAD DATA
+    # ---------------------------------------------------------
+    with st.spinner("📡 Google Sheets-ൽ നിന്ന് live data ലോഡ് ചെയ്യുന്നു..."):
         df_ind, ind_error = fetch_live_data(SHEET_INDIVIDUAL)
         df_grp, grp_error = fetch_live_data(SHEET_GROUP)
 
     if ind_error:
         st.error("❌ Individual_Data വായിക്കാൻ കഴിഞ്ഞില്ല.")
-        with st.expander("Individual_Data error details"):
+        with st.expander("Individual_Data error"):
             st.code(ind_error)
 
     if grp_error:
         st.error("❌ Group_Data വായിക്കാൻ കഴിഞ്ഞില്ല.")
-        with st.expander("Group_Data error details"):
+        with st.expander("Group_Data error"):
             st.code(grp_error)
 
-    # Helpful setup message when sheets exist but contain no rows.
-    if not ind_error and df_ind.empty:
-        st.info(
-            f"ℹ️ '{SHEET_INDIVIDUAL}' sheet-ൽ ഇപ്പോൾ രജിസ്ട്രേഷൻ ഡാറ്റ ഇല്ല."
-        )
-
-    if not grp_error and df_grp.empty:
-        st.info(
-            f"ℹ️ '{SHEET_GROUP}' sheet-ൽ ഇപ്പോൾ രജിസ്ട്രേഷൻ ഡാറ്റ ഇല്ല."
-        )
-
-    unit_col_ind = find_column(df_ind, ["യൂണിറ്റ്", "unit"])
-    events_col_ind = find_column(
-        df_ind, ["തിരഞ്ഞെടുത്ത ഇനങ്ങൾ", "events", "ഇനങ്ങൾ"]
+    unit_col_ind = find_column(
+        df_ind,
+        ["യൂണിറ്റ്", "unit", "family unit", "unit name"],
     )
-
     unit_col_grp = find_column(
         df_grp,
         [
             "പ്രധാന യൂണിറ്റ്",
             "പ്രധാന യൂണിറ്റ് പേര്",
+            "ക്ലസ്റ്റർ യൂണിറ്റുകൾ",
             "യൂണിറ്റ്",
             "unit",
             "main unit",
             "main_unit",
+            "family unit",
         ],
     )
+
+    events_col_ind = find_column(
+        df_ind,
+        ["തിരഞ്ഞെടുത്ത ഇനങ്ങൾ", "events", "ഇനങ്ങൾ", "event"],
+    )
     events_col_grp = find_column(
-        df_grp, ["ഇനത്തിന്റെ പേര്", "event", "ഇനം"]
+        df_grp,
+        ["ഇനത്തിന്റെ പേര്", "event", "ഇനം", "events"],
     )
 
-    with st.expander("🔎 Data Diagnostics", expanded=False):
-        st.write(f"Individual_Data rows loaded: **{len(df_ind)}**")
-        st.write(f"Group_Data rows loaded: **{len(df_grp)}**")
-        if not df_ind.empty:
-            st.write("Individual_Data columns:", list(df_ind.columns))
-        if not df_grp.empty:
-            st.write("Group_Data columns:", list(df_grp.columns))
+    zone_col_ind = find_column(df_ind, ["മേഖല", "zone"])
+    zone_col_grp = find_column(df_grp, ["മേഖല", "zone"])
 
-    tab1, tab2, tab3 = st.tabs([
-        "📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്",
-        "👤 വ്യക്തിഗത റിപ്പോർട്ട്",
-        "👥 ഗ്രൂപ്പ് റിപ്പോർട്ട്",
-    ])
+    # Derived columns make the rest of the dashboard independent of
+    # the exact Google Sheet column naming.
+    ind = _prepare_dashboard_data(df_ind, unit_col_ind)
+    grp = _prepare_dashboard_data(df_grp, unit_col_grp)
 
     # ---------------------------------------------------------
-    # CENTRAL DASHBOARD
+    # DATA QUALITY / CONNECTION NOTICE
     # ---------------------------------------------------------
-    with tab1:
-        m1, m2, m3, m4 = st.columns(4)
-
-        m1.metric(
-            "ആകെ വ്യക്തിഗത എൻട്രികൾ",
-            len(df_ind),
-        )
-        m2.metric(
-            "ആകെ ഗ്രൂപ്പ് എൻട്രികൾ",
-            len(df_grp),
+    if not ind_error and ind.empty:
+        st.warning(
+            "⚠️ Individual_Data is connected, but no individual rows were loaded."
         )
 
-        counts_dict = {}
-        if not df_ind.empty and unit_col_ind:
-            cleaned_series = df_ind[unit_col_ind].fillna("").apply(clean_text)
-            counts_dict = cleaned_series.value_counts().to_dict()
-
-        registered_units_count = sum(
-            1 for unit in ALL_UNITS
-            if counts_dict.get(clean_text(unit), 0) > 0
+    if not grp_error and grp.empty:
+        st.warning(
+            "⚠️ Group_Data is connected, but no group rows were loaded."
         )
 
-        m3.metric(
-            "രജിസ്റ്റർ ചെയ്ത യൂണിറ്റുകൾ",
-            f"{registered_units_count} / {len(ALL_UNITS)}",
+    if not df_ind.empty and not unit_col_ind:
+        st.warning(
+            "⚠️ Individual_Data-ൽ standard Unit column കണ്ടെത്തിയില്ല. "
+            "Dashboard all columns fallback matching ഉപയോഗിക്കുന്നു."
         )
 
-        total_registrations = len(df_ind) + len(df_grp)
-        m4.metric("ആകെ രജിസ്ട്രേഷനുകൾ", total_registrations)
-
-        st.markdown("---")
-
-        # -----------------------------------------------------
-        # Zone summary
-        # -----------------------------------------------------
-        st.subheader("🗺️ Zone-wise Summary")
-
-        zone_counts = {z: 0 for z in UNITS_BY_ZONE}
-
-        if not df_ind.empty:
-            zone_col_ind = find_column(df_ind, ["മേഖല", "zone"])
-            if zone_col_ind:
-                for value in df_ind[zone_col_ind].fillna(""):
-                    if str(value).strip() in zone_counts:
-                        zone_counts[str(value).strip()] += 1
-
-        if not df_grp.empty:
-            zone_col_grp = find_column(df_grp, ["മേഖല", "zone"])
-            if zone_col_grp:
-                for value in df_grp[zone_col_grp].fillna(""):
-                    if str(value).strip() in zone_counts:
-                        zone_counts[str(value).strip()] += 1
-
-        zone_df = pd.DataFrame(
-            list(zone_counts.items()),
-            columns=["Zone", "Registrations"],
+    if not df_grp.empty and not unit_col_grp:
+        st.warning(
+            "⚠️ Group_Data-ൽ standard Unit column കണ്ടെത്തിയില്ല. "
+            "Dashboard all columns fallback matching ഉപയോഗിക്കുന്നു."
         )
+
+    # ---------------------------------------------------------
+    # FILTER BAR
+    # ---------------------------------------------------------
+    st.subheader("🎛️ Dashboard Filters")
+
+    filter1, filter2, filter3 = st.columns(3)
+
+    with filter1:
+        zone_options = ["All Zones"] + list(UNITS_BY_ZONE.keys())
+        selected_zone = st.selectbox(
+            "Zone",
+            zone_options,
+            key="central_zone_filter",
+        )
+
+    zone_units = (
+        ALL_UNITS
+        if selected_zone == "All Zones"
+        else UNITS_BY_ZONE.get(selected_zone, [])
+    )
+
+    with filter2:
+        selected_unit = st.selectbox(
+            "Family Unit",
+            ["All Units"] + zone_units,
+            key="central_unit_filter",
+        )
+
+    with filter3:
+        registration_type = st.selectbox(
+            "Registration Type",
+            ["All", "Individual", "Group"],
+            key="central_type_filter",
+        )
+
+    # Apply filters.
+    ind_view = ind.copy()
+    grp_view = grp.copy()
+
+    if selected_zone != "All Zones":
+        ind_view = ind_view[
+            ind_view["__Dashboard Zone"].eq(selected_zone)
+        ]
+        grp_view = grp_view[
+            grp_view["__Dashboard Zone"].eq(selected_zone)
+        ]
+
+    if selected_unit != "All Units":
+        ind_view = _rows_for_unit(
+            ind_view,
+            selected_unit,
+            unit_col_ind,
+        )
+        grp_view = _rows_for_unit(
+            grp_view,
+            selected_unit,
+            unit_col_grp,
+        )
+
+    if registration_type == "Individual":
+        grp_view = grp_view.iloc[0:0].copy()
+    elif registration_type == "Group":
+        ind_view = ind_view.iloc[0:0].copy()
+
+    # ---------------------------------------------------------
+    # KPI CARDS
+    # ---------------------------------------------------------
+    individual_count = len(ind_view)
+    group_count = len(grp_view)
+    total_count = individual_count + group_count
+
+    registered_unit_set = set(
+        x for x in pd.concat(
+            [
+                ind_view["__Dashboard Unit"]
+                if "__Dashboard Unit" in ind_view
+                else pd.Series(dtype=str),
+                grp_view["__Dashboard Unit"]
+                if "__Dashboard Unit" in grp_view
+                else pd.Series(dtype=str),
+            ],
+            ignore_index=True,
+        ).tolist()
+        if x in ALL_UNITS
+    )
+
+    k1, k2, k3, k4, k5 = st.columns(5)
+
+    k1.metric("👤 Individual", individual_count)
+    k2.metric("👥 Group", group_count)
+    k3.metric("📋 Total", total_count)
+    k4.metric(
+        "🏘️ Units Registered",
+        f"{len(registered_unit_set)} / {len(ALL_UNITS)}",
+    )
+    k5.metric(
+        "📈 Avg / Registered Unit",
+        round(total_count / len(registered_unit_set), 1)
+        if registered_unit_set
+        else 0,
+    )
+
+    st.markdown("---")
+
+    # ---------------------------------------------------------
+    # UNIT PERFORMANCE MATRIX
+    # ---------------------------------------------------------
+    st.subheader("🏘️ Unit Performance — All 40 Units")
+
+    unit_rows = []
+
+    for zone, units in UNITS_BY_ZONE.items():
+        for unit in units:
+            n_ind = len(_rows_for_unit(ind_view, unit, unit_col_ind))
+            n_grp = len(_rows_for_unit(grp_view, unit, unit_col_grp))
+            unit_rows.append(
+                {
+                    "Zone": zone,
+                    "Unit": unit,
+                    "Individual": n_ind,
+                    "Group": n_grp,
+                    "Total": n_ind + n_grp,
+                    "Status": "✅ Registered" if (n_ind + n_grp) else "— No Entry",
+                }
+            )
+
+    unit_df = pd.DataFrame(unit_rows)
+
+    u1, u2 = st.columns([2, 1])
+
+    with u1:
+        st.dataframe(
+            unit_df.sort_values(
+                ["Total", "Unit"],
+                ascending=[False, True],
+            ),
+            use_container_width=True,
+            hide_index=True,
+            height=520,
+        )
+
+    with u2:
+        registered = unit_df[unit_df["Total"] > 0]
+        pending = unit_df[unit_df["Total"] == 0]
+
+        st.metric("✅ Registered Units", len(registered))
+        st.metric("⏳ Units Without Entry", len(pending))
+
+        if not pending.empty:
+            st.markdown("**⏳ Pending Units**")
+            st.write(", ".join(pending["Unit"].tolist()))
+
+    st.markdown("---")
+
+    # ---------------------------------------------------------
+    # ZONE + EVENT ANALYTICS
+    # ---------------------------------------------------------
+    left, right = st.columns(2)
+
+    with left:
+        st.subheader("🗺️ Zone Performance")
+
+        zone_rows = []
+        for zone in UNITS_BY_ZONE:
+            z_ind = int((ind_view["__Dashboard Zone"] == zone).sum())
+            z_grp = int((grp_view["__Dashboard Zone"] == zone).sum())
+            zone_rows.append(
+                {
+                    "Zone": zone,
+                    "Individual": z_ind,
+                    "Group": z_grp,
+                    "Total": z_ind + z_grp,
+                }
+            )
+
+        zone_df = pd.DataFrame(zone_rows)
         st.dataframe(
             zone_df,
             use_container_width=True,
             hide_index=True,
         )
 
-        st.markdown("---")
-
-        # -----------------------------------------------------
-        # Event summary
-        # -----------------------------------------------------
-        st.subheader(
-            "🎯 ഓരോ മത്സര ഇനങ്ങളുടെയും മൊത്തം എൻട്രികൾ"
+        st.bar_chart(
+            zone_df.set_index("Zone")["Total"]
         )
 
+    with right:
+        st.subheader("🎯 Top Events")
+
         event_counts = {}
+        event_counts.update(
+            _event_counts(ind_view, events_col_ind)
+        )
 
-        if not df_ind.empty and events_col_ind:
-            for ev_list in df_ind[events_col_ind].dropna():
-                for ev in str(ev_list).split(","):
-                    ev_clean = ev.strip()
-                    if ev_clean:
-                        event_counts[ev_clean] = (
-                            event_counts.get(ev_clean, 0) + 1
-                        )
+        group_counts = _event_counts(
+            grp_view,
+            events_col_grp,
+            prefix="👥 ",
+        )
 
-        if not df_grp.empty and events_col_grp:
-            for ev in df_grp[events_col_grp].dropna():
-                ev_clean = str(ev).strip()
-                if ev_clean:
-                    key = f"[Group] {ev_clean}"
-                    event_counts[key] = event_counts.get(key, 0) + 1
-
-        if event_counts:
-            df_event_summary = pd.DataFrame(
-                list(event_counts.items()),
-                columns=["മത്സര ഇനം (Event)", "ആകെ രജിസ്ട്രേഷനുകൾ"],
-            ).sort_values(
-                by="ആകെ രജിസ്ട്രേഷനുകൾ",
-                ascending=False,
+        for event, count in group_counts.items():
+            event_counts[event] = (
+                event_counts.get(event, 0) + count
             )
 
+        if event_counts:
+            event_df = pd.DataFrame(
+                list(event_counts.items()),
+                columns=["Event", "Registrations"],
+            ).sort_values(
+                "Registrations",
+                ascending=False,
+            ).head(15)
+
             st.dataframe(
-                df_event_summary,
+                event_df,
                 use_container_width=True,
                 hide_index=True,
             )
-
             st.bar_chart(
-                df_event_summary.set_index("മത്സര ഇനം (Event)")
-                .head(15)["ആകെ രജിസ്ട്രേഷനുകൾ"]
+                event_df.set_index("Event")["Registrations"]
             )
         else:
-            st.info("ഇതുവരെ മത്സര ഇനങ്ങളിൽ എൻട്രികൾ ലഭിച്ചിട്ടില്ല.")
+            st.info("No event data available for the selected filters.")
 
-        st.markdown("---")
+    st.markdown("---")
 
-        # -----------------------------------------------------
-        # Unit-wise detail
-        # -----------------------------------------------------
-        st.subheader("🏘️ കുടുംബ യൂണിറ്റ് തിരിച്ചു എൻട്രി ലിസ്റ്റ് നോക്കുക")
+    # ---------------------------------------------------------
+    # SELECTED UNIT COMMAND VIEW
+    # ---------------------------------------------------------
+    st.subheader("🔎 Detailed Unit View")
 
-        selected_unit_view = st.selectbox(
-            "വിവരങ്ങൾ കാണേണ്ട യൂണിറ്റ് തിരഞ്ഞെടുക്കുക:",
-            ["-- Select Unit --"] + ALL_UNITS,
+    detail_unit = st.selectbox(
+        "Select a unit to inspect",
+        ["-- Select Unit --"] + ALL_UNITS,
+        key="detail_unit",
+    )
+
+    if detail_unit != "-- Select Unit --":
+        d_ind = _rows_for_unit(
+            ind,
+            detail_unit,
+            unit_col_ind,
+        )
+        d_grp = _rows_for_unit(
+            grp,
+            detail_unit,
+            unit_col_grp,
         )
 
-        if selected_unit_view != "-- Select Unit --":
-            u_clean = clean_text(selected_unit_view)
+        st.info(
+            f"📍 {detail_unit} • {get_zone_for_unit(detail_unit)} • "
+            f"Individual: {len(d_ind)} • Group: {len(d_grp)} • "
+            f"Total: {len(d_ind) + len(d_grp)}"
+        )
 
-            st.markdown(
-                f"#### 👤 {selected_unit_view} - വ്യക്തിഗത എൻട്രികൾ"
-            )
+        dt1, dt2 = st.columns(2)
 
-            # ---------------- INDIVIDUAL ----------------
-            if df_ind.empty:
-                st.info(
-                    f"ℹ️ Individual_Data sheet-ൽ ഇപ്പോൾ ഡാറ്റ ഇല്ല."
-                )
-            elif not unit_col_ind:
-                st.warning(
-                    "⚠️ Individual_Data-ൽ യൂണിറ്റ് column കണ്ടെത്താനായില്ല."
-                )
-                st.caption(
-                    "ലഭ്യമായ columns: " + ", ".join(map(str, df_ind.columns))
-                )
+        with dt1:
+            st.markdown("#### 👤 Individual Entries")
+            if d_ind.empty:
+                st.info("ഈ യൂണിറ്റിൽ individual registration ഇല്ല.")
+            else:
                 st.dataframe(
-                    df_ind,
+                    d_ind.drop(
+                        columns=["__Dashboard Unit", "__Dashboard Zone"],
+                        errors="ignore",
+                    ),
                     use_container_width=True,
                     hide_index=True,
                 )
+
+        with dt2:
+            st.markdown("#### 👥 Group Entries")
+            if d_grp.empty:
+                st.info("ഈ യൂണിറ്റിൽ group registration ഇല്ല.")
             else:
-                matched_ind = df_ind[
-                    df_ind[unit_col_ind]
-                    .fillna("")
-                    .apply(clean_text)
-                    .eq(u_clean)
-                ]
-
-                if not matched_ind.empty:
-                    st.dataframe(
-                        matched_ind,
-                        use_container_width=True,
-                        hide_index=True,
-                    )
-                else:
-                    st.info(
-                        f"ℹ️ {selected_unit_view} യൂണിറ്റിൽ "
-                        "വ്യക്തിഗത രജിസ്ട്രേഷൻ ഒന്നുമില്ല."
-                    )
-
-            st.markdown(
-                f"#### 👥 {selected_unit_view} - ഗ്രൂപ്പ് എൻട്രികൾ"
-            )
-
-            # IMPORTANT:
-            # Never call an existing Group_Data sheet "empty" merely
-            # because the unit column was not detected.
-            if df_grp.empty:
-                st.info(
-                    "ℹ️ Group_Data sheet-ൽ ഇപ്പോൾ ഡാറ്റ ഇല്ല."
-                )
-            elif not unit_col_grp:
-                st.warning(
-                    "⚠️ Group_Data-ൽ യൂണിറ്റ് column കണ്ടെത്താനായില്ല."
-                )
-                st.caption(
-                    "ലഭ്യമായ Group_Data columns: "
-                    + ", ".join(map(str, df_grp.columns))
-                )
                 st.dataframe(
-                    df_grp,
+                    d_grp.drop(
+                        columns=["__Dashboard Unit", "__Dashboard Zone"],
+                        errors="ignore",
+                    ),
                     use_container_width=True,
                     hide_index=True,
                 )
-            else:
-                matched_grp = df_grp[
-                    df_grp[unit_col_grp]
-                    .fillna("")
-                    .apply(clean_text)
-                    .eq(u_clean)
-                ]
 
-                if not matched_grp.empty:
-                    st.dataframe(
-                        matched_grp,
-                        use_container_width=True,
-                        hide_index=True,
-                    )
-                else:
-                    st.info(
-                        f"ℹ️ {selected_unit_view} യൂണിറ്റിൽ "
-                        "ഗ്രൂപ്പ് രജിസ്ട്രേഷൻ ഒന്നുമില്ല."
-                    )
+    st.markdown("---")
 
     # ---------------------------------------------------------
-    # INDIVIDUAL REPORT
+    # RECENT REGISTRATIONS
     # ---------------------------------------------------------
-    with tab2:
-        st.subheader("👤 എല്ലാ വ്യക്തിഗത അപേക്ഷകളുടെയും ലിസ്റ്റ്")
+    st.subheader("🕒 Recent Registrations")
 
+    recent_frames = []
+
+    if not ind_view.empty:
+        temp = ind_view.copy()
+        temp["__Type"] = "Individual"
+        recent_frames.append(temp)
+
+    if not grp_view.empty:
+        temp = grp_view.copy()
+        temp["__Type"] = "Group"
+        recent_frames.append(temp)
+
+    if recent_frames:
+        recent = pd.concat(recent_frames, ignore_index=True)
+
+        time_col = find_column(
+            recent,
+            [
+                "രജിസ്റ്റർ ചെയ്ത സമയം",
+                "registered time",
+                "timestamp",
+                "date",
+                "time",
+            ],
+        )
+
+        if time_col:
+            recent["__SortTime"] = pd.to_datetime(
+                recent[time_col],
+                errors="coerce",
+            )
+            recent = recent.sort_values(
+                "__SortTime",
+                ascending=False,
+            )
+
+        recent_display = recent.head(20).drop(
+            columns=["__Dashboard Unit", "__Dashboard Zone", "__SortTime"],
+            errors="ignore",
+        )
+
+        st.dataframe(
+            recent_display,
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No registrations found for the selected filters.")
+
+    # ---------------------------------------------------------
+    # FULL REPORT TABS
+    # ---------------------------------------------------------
+    tab_ind, tab_grp, tab_diag = st.tabs(
+        [
+            "👤 Individual Report",
+            "👥 Group Report",
+            "🛠️ Data Diagnostics",
+        ]
+    )
+
+    with tab_ind:
+        st.subheader("All Individual Registrations")
         if not df_ind.empty:
             st.dataframe(
                 df_ind,
                 use_container_width=True,
                 hide_index=True,
+                height=500,
             )
-
             csv = df_ind.to_csv(index=False).encode("utf-8-sig")
             st.download_button(
-                "📥 CSV ആയി ഡൗൺലോഡ് ചെയ്യുക",
+                "📥 Download Individual CSV",
                 csv,
                 "all_individual_reports.csv",
                 "text/csv",
                 use_container_width=True,
             )
         else:
-            st.info("വ്യക്തിഗത രജിസ്ട്രേഷനുകൾ ഒന്നും കണ്ടെത്തിയിട്ടില്ല.")
+            st.info("Individual_Data has no rows.")
 
-    # ---------------------------------------------------------
-    # GROUP REPORT
-    # ---------------------------------------------------------
-    with tab3:
-        st.subheader("👥 എല്ലാ ഗ്രൂപ്പ് അപേക്ഷകളുടെയും ലിസ്റ്റ്")
-
+    with tab_grp:
+        st.subheader("All Group Registrations")
         if not df_grp.empty:
             st.dataframe(
                 df_grp,
                 use_container_width=True,
                 hide_index=True,
+                height=500,
             )
-
             csv_grp = df_grp.to_csv(index=False).encode("utf-8-sig")
             st.download_button(
-                "📥 CSV ആയി ഡൗൺലോഡ് ചെയ്യുക",
+                "📥 Download Group CSV",
                 csv_grp,
                 "all_group_reports.csv",
                 "text/csv",
                 use_container_width=True,
             )
         else:
-            st.info("ഗ്രൂപ്പ് രജിസ്ട്രേഷനുകൾ ഒന്നും കണ്ടെത്തിയിട്ടില്ല.")
+            st.info("Group_Data has no rows.")
+
+    with tab_diag:
+        st.subheader("🛠️ Data Diagnostics")
+
+        d1, d2, d3, d4 = st.columns(4)
+        d1.metric("Individual Rows", len(df_ind))
+        d2.metric("Group Rows", len(df_grp))
+        d3.metric(
+            "Individual Unit Column",
+            "Found" if unit_col_ind else "Fallback",
+        )
+        d4.metric(
+            "Group Unit Column",
+            "Found" if unit_col_grp else "Fallback",
+        )
+
+        st.markdown("#### Individual_Data Columns")
+        st.write(list(df_ind.columns) if not df_ind.empty else "No columns")
+
+        st.markdown("#### Group_Data Columns")
+        st.write(list(df_grp.columns) if not df_grp.empty else "No columns")
+
+        unknown_ind = int(
+            (ind["__Dashboard Unit"] == "UNKNOWN").sum()
+        ) if not ind.empty else 0
+
+        unknown_grp = int(
+            (grp["__Dashboard Unit"] == "UNKNOWN").sum()
+        ) if not grp.empty else 0
+
+        st.warning(
+            f"Unmatched individual rows: {unknown_ind} | "
+            f"Unmatched group rows: {unknown_grp}"
+        )
+
+        if unknown_ind:
+            st.markdown("**Individual rows not mapped to a known unit**")
+            st.dataframe(
+                ind[ind["__Dashboard Unit"] == "UNKNOWN"].drop(
+                    columns=["__Dashboard Unit", "__Dashboard Zone"],
+                    errors="ignore",
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        if unknown_grp:
+            st.markdown("**Group rows not mapped to a known unit**")
+            st.dataframe(
+                grp[grp["__Dashboard Unit"] == "UNKNOWN"].drop(
+                    columns=["__Dashboard Unit", "__Dashboard Zone"],
+                    errors="ignore",
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
