@@ -275,8 +275,8 @@ def get_age_category(dob):
     return "Super Senior", age
 
 
-def st.caption("✅ Dashboard v2.0 • Corrected Google Sheets + Live Central Dashboard")
-show_connection_status():
+def show_connection_status():
+    st.caption("✅ Dashboard v2.0 • Corrected Google Sheets + Live Central Dashboard")
     with st.sidebar:
         st.markdown("### 🔧 System Status")
 
