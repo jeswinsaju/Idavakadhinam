@@ -59,6 +59,16 @@ def clean_text(text):
         return ""
     return re.sub(r'[^a-zA-Z0-9]', '', str(text)).lower()
 
+# Dynamic Column Fetcher (ശരിയായ കോളം കണ്ടെത്താൻ)
+def find_column(df, possible_names):
+    if df.empty:
+        return None
+    for col in df.columns:
+        for p in possible_names:
+            if p.lower() in str(col).lower():
+                return col
+    return None
+
 # -------------------------------------------------------------
 # 1. 40 കുടുംബ യൂണിറ്റുകളുടെ ലിസ്റ്റ് (4 Zones)
 # -------------------------------------------------------------
@@ -197,7 +207,6 @@ if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Sing
                 with c4:
                     cat_type = st.selectbox("മത്സര വിഭാഗം", ["കലാമത്സരം", "കായിക മത്സരം", "സാഹിത്യമത്സരം"], key=f"cattype_{i}")
                     
-                    # Age group wise filtering based on DOB
                     if cat_type == "കലാമത്സരം":
                         eligible = [k for k, v in ARTS_INDIVIDUAL.items() if age_cat in v]
                     elif cat_type == "കായിക മത്സരം":
@@ -231,13 +240,12 @@ if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Sing
             submit_bulk = st.form_submit_button("🚀 വ്യക്തിഗത എൻട്രികൾ ഒന്നായി സേവ് ചെയ്യുക")
 
             if submit_bulk:
-                # Mandatory Field Validation
                 if not tm_name or not tm_phone or not atm_name or not atm_phone:
                     st.error("⚠️ മാനേജരുടെയും അസിസ്റ്റന്റ് മാനേജരുടെയും വിവരങ്ങളും ഫോൺ നമ്പറും നിർബന്ധമായും നൽകണം!")
                 else:
                     valid_entries = [p for p in participants_data if p["is_valid"]]
                     if len(valid_entries) < len(participants_data):
-                        st.error("⚠️️ എല്ലാ മത്സരാർത്ഥികളുടെയും പേരും കുറഞ്ഞത് ഒരു ഇനമെങ്കിലും നൽകിയിട്ടുണ്ടെന്ന് ഉറപ്പാക്കുക!")
+                        st.error("⚠ എല്ലാ മത്സരാർത്ഥികളുടെയും പേരും കുറഞ്ഞത് ഒരു ഇനമെങ്കിലും നൽകിയിട്ടുണ്ടെന്ന് ഉറപ്പാക്കുക!")
                     else:
                         for item in valid_entries: del item["is_valid"]
                         try:
@@ -280,10 +288,10 @@ if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Sing
                         st.error(f"സേവ് ചെയ്യുമ്പോൾ എറർ വന്നിരിക്കുന്നു: {ex}")
 
 # -------------------------------------------------------------
-# 5. ലൈവ് റിപ്പോർട്ട് & ഡാഷ്‌ബോർഡ് പേജ് (Dropdown Total Display)
+# 5. ലൈവ് റിപ്പോർട്ട് & ഡാഷ്‌ബോർഡ് പേജ്
 # -------------------------------------------------------------
 else:
-    st.header("📊 സമഗ്ര റിപ്പോർട്ടുകളും സെൻട്രൽ ഡാഷ്‌ബോർഡും")
+    st.header("📊 സമഗ്ര ലൈവ് ഡാഷ്‌ബോർഡ്")
     
     if st.button("🔄 ഡാറ്റ പുതുക്കുക (Refresh Live Data)"):
         st.cache_data.clear()
@@ -293,78 +301,103 @@ else:
         df_ind = fetch_live_data("Individual_Data")
         df_grp = fetch_live_data("Group_Data")
 
+    # Column Mapping (Dynamic Extraction)
+    unit_col_ind = find_column(df_ind, ["യൂണിറ്റ്", "unit"])
+    events_col_ind = find_column(df_ind, ["തിരഞ്ഞെടുത്ത ഇനങ്ങൾ", "events", "ഇനങ്ങൾ"])
+    unit_col_grp = find_column(df_grp, ["പ്രധാന യൂണിറ്റ്", "യൂണിറ്റ്", "unit"])
+    events_col_grp = find_column(df_grp, ["ഇനത്തിന്റെ പേര്", "event", "ഇനം"])
+
     tab1, tab2, tab3 = st.tabs(["📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്", "👤 വ്യക്തിഗത റിപ്പോർട്ട്", "👥 ഗ്രൂപ്പ് റിപ്പോർട്ട്"])
 
-    unit_col = None
-    if not df_ind.empty:
-        for c in df_ind.columns:
-            if "യൂണിറ്റ്" in str(c) or "unit" in str(c).lower():
-                unit_col = c
-                break
-
     with tab1:
+        # Core Metrics Overview
         m1, m2, m3 = st.columns(3)
         m1.metric("ആകെ വ്യക്തിഗത എൻട്രികൾ", len(df_ind) if not df_ind.empty else 0)
         m2.metric("ആകെ ഗ്രൂപ്പ് എൻട്രികൾ", len(df_grp) if not df_grp.empty else 0)
         
         counts_dict = {}
-        if not df_ind.empty and unit_col:
-            cleaned_series = df_ind[unit_col].apply(clean_text)
+        if not df_ind.empty and unit_col_ind:
+            cleaned_series = df_ind[unit_col_ind].apply(clean_text)
             counts_dict = cleaned_series.value_counts().to_dict()
 
         registered_units_count = sum(1 for u in ALL_UNITS if counts_dict.get(clean_text(u), 0) > 0)
         m3.metric("രജിസ്റ്റർ ചെയ്ത യൂണിറ്റുകൾ", f"{registered_units_count} / 40")
 
         st.markdown("---")
-        st.subheader("🏘️ മേഖല & യൂണിറ്റ് തിരിച്ച് വിവരങ്ങൾ നോക്കുക (Dropdown Filter)")
         
-        # Table മാറ്റി Dropdown വഴി കാണാനുള്ള സൗകര്യം
-        col_zone, col_unit = st.columns(2)
+        # Section A: Event-Wise Total Registrations (ഓരോ ഇനത്തിലെയും ആകെ ആളുകൾ)
+        st.subheader("🎯 ഓരോ മത്സര ഇനങ്ങളുടെയും മൊത്തം എൻട്രികൾ (Total Program Registrations)")
         
-        with col_zone:
-            selected_z = st.selectbox("മേഖല (Zone) തിരഞ്ഞെടുക്കുക:", ["എല്ലാ മേഖലകളും"] + list(UNITS_BY_ZONE.keys()))
+        event_counts = {}
         
-        with col_unit:
-            if selected_z != "എല്ലാ മേഖലകളും":
-                available_u = ["എല്ലാ യൂണിറ്റുകളും"] + UNITS_BY_ZONE[selected_z]
+        # Counting Individual Events
+        if not df_ind.empty and events_col_ind:
+            for ev_list in df_ind[events_col_ind].dropna():
+                for ev in str(ev_list).split(','):
+                    ev_clean = ev.strip()
+                    if ev_clean:
+                        event_counts[ev_clean] = event_counts.get(ev_clean, 0) + 1
+                        
+        # Counting Group Events
+        if not df_grp.empty and events_col_grp:
+            for ev in df_grp[events_col_grp].dropna():
+                ev_clean = str(ev).strip()
+                if ev_clean:
+                    event_counts[f"[Group] {ev_clean}"] = event_counts.get(f"[Group] {ev_clean}", 0) + 1
+
+        if event_counts:
+            df_event_summary = pd.DataFrame(list(event_counts.items()), columns=["മത്സര ഇനം (Event)", "ആകെ രജിസ്ട്രേഷനുകൾ (Total Registrations)"])
+            df_event_summary = df_event_summary.sort_values(by="ആകെ രജിസ്ട്രേഷനുകൾ (Total Registrations)", ascending=False)
+            st.dataframe(df_event_summary, use_container_width=True, hide_index=True)
+        else:
+            st.info("ഇതുവരെ മത്സര ഇനങ്ങളിൽ എൻട്രികൾ ലഭിച്ചിട്ടില്ല.")
+
+        st.markdown("---")
+
+        # Section B: Unit-Wise Registration Viewer (യൂണിറ്റ് സെലക്ട് ചെയ്യുമ്പോൾ ലിസ്റ്റ് കാണുന്നത്)
+        st.subheader("🏘️ കുടുംബ യൂണിറ്റ് തിരിച്ചു എൻട്രി ലിസ്റ്റ് നോക്കുക")
+        
+        selected_unit_view = st.selectbox("വിവരങ്ങൾ കാണേണ്ട യൂണിറ്റ് തിരഞ്ഞെടുക്കുക:", ["-- Select Unit --"] + ALL_UNITS)
+        
+        if selected_unit_view != "-- Select Unit --":
+            u_clean = clean_text(selected_unit_view)
+            
+            # Unit Individual Entries
+            st.markdown(f"#### 👤 **{selected_unit_view}** - വ്യക്തിഗത എൻട്രികൾ:")
+            if not df_ind.empty and unit_col_ind:
+                unit_ind_df = df_ind[df_ind[unit_col_ind].apply(clean_text) == u_clean]
+                if not unit_ind_df.empty:
+                    st.dataframe(unit_ind_df, use_container_width=True, hide_index=True)
+                else:
+                    st.warning(f"{selected_unit_view} യൂണിറ്റിൽ നിന്ന് ഇതുവരെ വ്യക്തിഗത രജിസ്ട്രേഷനുകൾ ഒന്നും വന്നിട്ടില്ല.")
             else:
-                available_u = ["എല്ലാ യൂണിറ്റുകളും"] + ALL_UNITS
-            selected_u = st.selectbox("കുടുംബ യൂണിറ്റ് തിരഞ്ഞെടുക്കുക:", available_u)
+                st.info("ഡാറ്റ ലഭ്യമല്ല.")
 
-        st.markdown("### 📊 വിവരങ്ങളുടെ സംഗ്രഹം (Summary Total):")
-        res_col1, res_col2 = st.columns(2)
-        
-        # Dynamic Count Calculations
-        if selected_z == "എല്ലാ മേഖലകളും" and selected_u == "എല്ലാ യൂണിറ്റുകളും":
-            total_selected_ind = len(df_ind) if not df_ind.empty else 0
-        elif selected_u != "എല്ലാ യൂണിറ്റുകളും":
-            total_selected_ind = counts_dict.get(clean_text(selected_u), 0)
-        else: # Selected zone only
-            zone_units = UNITS_BY_ZONE[selected_z]
-            total_selected_ind = sum(counts_dict.get(clean_text(u), 0) for u in zone_units)
-
-        res_col1.metric(f"തിരഞ്ഞെടുത്ത ലിസ്റ്റിലെ വ്യക്തിഗത എൻട്രികൾ", total_selected_ind)
+            # Unit Group Entries
+            st.markdown(f"#### 👥 **{selected_unit_view}** - ഗ്രൂപ്പ് എൻട്രികൾ:")
+            if not df_grp.empty and unit_col_grp:
+                unit_grp_df = df_grp[df_grp[unit_col_grp].apply(clean_text) == u_clean]
+                if not unit_grp_df.empty:
+                    st.dataframe(unit_grp_df, use_container_width=True, hide_index=True)
+                else:
+                    st.warning(f"{selected_unit_view} യൂണിറ്റിൽ നിന്ന് ഗ്രൂപ്പ് മത്സര എൻട്രികൾ വന്നിട്ടില്ല.")
+            else:
+                st.info("ഡാറ്റ ലഭ്യമല്ല.")
 
     with tab2:
-        st.subheader("👤 വ്യക്തിഗത അപേക്ഷകൾ")
-        filter_unit = st.selectbox("യൂണിറ്റ് അനുസരിച്ച് കാണുക:", ["എല്ലാ യൂണിറ്റുകളും"] + ALL_UNITS, key="tab2_filter")
-        
+        st.subheader("👤 എല്ലാ വ്യക്തിഗത അപേക്ഷകളുടെയും ലിസ്റ്റ്")
         if not df_ind.empty:
-            display_df = df_ind.copy()
-            if filter_unit != "എല്ലാ യൂണിറ്റുകളും" and unit_col:
-                display_df = display_df[display_df[unit_col].apply(clean_text) == clean_text(filter_unit)]
-            
-            st.dataframe(display_df, use_container_width=True)
-            csv = display_df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Excel/CSV ഡൗൺലോഡ് ചെയ്യുക", csv, "individual_reports.csv", "text/csv")
+            st.dataframe(df_ind, use_container_width=True)
+            csv = df_ind.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Excel/CSV ആയി ഡൗൺലോഡ് ചെയ്യുക", csv, "all_individual_reports.csv", "text/csv")
         else:
             st.info("വ്യക്തിഗത രജിസ്ട്രേഷനുകൾ ഒന്നും കണ്ടെത്തിയിട്ടില്ല.")
 
     with tab3:
-        st.subheader("👥 ഗ്രൂപ്പ് അപേക്ഷകൾ")
+        st.subheader("👥 എല്ലാ ഗ്രൂപ്പ് അപേക്ഷകളുടെയും ലിസ്റ്റ്")
         if not df_grp.empty:
             st.dataframe(df_grp, use_container_width=True)
             csv_grp = df_grp.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Excel/CSV ഡൗൺലോഡ് ചെയ്യുക", csv_grp, "group_reports.csv", "text/csv")
+            st.download_button("📥 Excel/CSV ആയി ഡൗൺലോഡ് ചെയ്യുക", csv_grp, "all_group_reports.csv", "text/csv")
         else:
             st.info("ഗ്രൂപ്പ് രജിസ്ട്രേഷനുകൾ ഒന്നും കണ്ടെത്തിയിട്ടില്ല.")
