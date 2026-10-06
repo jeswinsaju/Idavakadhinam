@@ -9,7 +9,7 @@ from google.oauth2.service_account import Credentials
 # PAGE CONFIG
 # =============================================================
 st.set_page_config(
-    page_title="സെന്റ് ജോർജ്ജസ് ചർച്ച് - ഇടവക ദിന മത്സരങ്ങൾ",
+    page_title="St. George Parish Day Portal v2.0",
     page_icon="⛪",
     layout="wide",
 )
@@ -275,7 +275,8 @@ def get_age_category(dob):
     return "Super Senior", age
 
 
-def show_connection_status():
+def st.caption("✅ Dashboard v2.0 • Corrected Google Sheets + Live Central Dashboard")
+show_connection_status():
     with st.sidebar:
         st.markdown("### 🔧 System Status")
 
@@ -294,7 +295,7 @@ def show_connection_status():
 # HEADER / NAVIGATION
 # =============================================================
 st.title("⛪ സെന്റ് ജോർജ്ജസ് ചർച്ച്, മുക്കാട്ടുകര")
-st.subheader("ഇടവക ദിന മത്സര രജിസ്ട്രേഷൻ പോർട്ടൽ")
+st.subheader("ഇടവക ദിന മത്സര രജിസ്ട്രേഷൻ പോർട്ടൽ • Dashboard v2.0")
 
 show_connection_status()
 
