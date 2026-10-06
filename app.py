@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import re
 from datetime import datetime, date
 import gspread
 from google.oauth2.service_account import Credentials
@@ -29,6 +30,7 @@ def get_gspread_client():
     sheet_url = secrets["spreadsheet"]
     return client.open_by_url(sheet_url)
 
+@st.cache_data(ttl=0)  # Caching പൂർണ്ണമായും ഒഴിവാക്കി - തത്സമയം ഷീറ്റിൽ നിന്ന് ലഭിക്കാൻ
 def fetch_live_data(worksheet_name):
     try:
         sh = get_gspread_client()
@@ -51,6 +53,15 @@ def append_rows(worksheet_name, list_of_dicts):
         
     rows_to_append = [list(d.values()) for d in list_of_dicts]
     ws.append_rows(rows_to_append)
+
+# -------------------------------------------------------------
+# String Normalization (Dots, Spaces, Symbols ഒഴിവാക്കി മാച്ച് ചെയ്യാൻ)
+# -------------------------------------------------------------
+def clean_text(text):
+    if not text:
+        return ""
+    # എല്ലാ കുത്തുകളും (dots) സ്പേസുകളും ഒഴിവാക്കി ചെറിയ അക്ഷരങ്ങളാക്കുന്നു
+    return re.sub(r'[^a-zA-Z0-9]', '', str(text)).lower()
 
 # -------------------------------------------------------------
 # 1. 40 കുടുംബ യൂണിറ്റുകളുടെ ലിസ്റ്റ് (4 Zones)
@@ -107,50 +118,32 @@ SPORTS_INDIVIDUAL = {
 LITERARY_INDIVIDUAL = ["ഉപന്യാസം", "കഥ രചന", "കവിത രചന", "ക്വിസ്", "ചിത്രാങ്കനം"]
 
 ARTS_GROUP = [
-    "സംഘ നൃത്തം (GROUP DANCE - KIDDIES)",
-    "സംഘ നൃത്തം (GROUP DANCE - SUB JUNIOR)",
-    "സംഘ നൃത്തം (GROUP DANCE - JUNIOR)",
-    "സംഘ നൃത്തം (GROUP DANCE - YOUTH)",
-    "മൂകാഭിനയം (MIME - SUB JUNIOR)",
-    "മൂകാഭിനയം (MIME - JUNIOR)",
-    "മൂകാഭിനയം (MIME - YOUTH)",
-    "സംഘ ഗാനം (GROUP SONG - JUNIOR)",
-    "സംഘ ഗാനം (GROUP SONG - YOUTH)",
-    "സംഘ ഗാനം (GROUP SONG - SENIOR)",
-    "സംഘ ഗാനം (GROUP SONG - SUPER SENIOR)",
-    "മാർഗംകളി (NO SPECIFIC AGE GROUP)"
+    "സംഘ നൃത്തം (GROUP DANCE - KIDDIES)", "സംഘ നൃത്തം (GROUP DANCE - SUB JUNIOR)",
+    "സംഘ നൃത്തം (GROUP DANCE - JUNIOR)", "സംഘ നൃത്തം (GROUP DANCE - YOUTH)",
+    "മൂകാഭിനയം (MIME - SUB JUNIOR)", "മൂകാഭിനയം (MIME - JUNIOR)",
+    "മൂകാഭിനയം (MIME - YOUTH)", "സംഘ ഗാനം (GROUP SONG - JUNIOR)",
+    "സംഘ ഗാനം (GROUP SONG - YOUTH)", "സംഘ ഗാനം (GROUP SONG - SENIOR)",
+    "സംഘ ഗാനം (GROUP SONG - SUPER SENIOR)", "മാർഗംകളി (NO SPECIFIC AGE GROUP)"
 ]
 
 SPORTS_GROUP = [
-    "4 X 100 Relay (SUB JUNIOR - BOYS)",
-    "4 X 100 Relay (SUB JUNIOR - GIRLS)",
-    "4 X 100 Relay (JUNIOR - BOYS)",
-    "4 X 100 Relay (JUNIOR - GIRLS)",
-    "4 X 100 Relay (YOUTH - BOYS)",
-    "4 X 100 Relay (YOUTH - GIRLS)",
-    "4 X 100 Relay (SENIOR - MEN)",
-    "4 X 100 Relay (SENIOR - WOMEN)",
-    "Badminton Doubles (BOYS)",
-    "Badminton Doubles (GIRLS)",
-    "Men's Football 5s (Maximum 7 Players)",
-    "Men's Cricket 6s (Maximum 7 Players)"
+    "4 X 100 Relay (SUB JUNIOR - BOYS)", "4 X 100 Relay (SUB JUNIOR - GIRLS)",
+    "4 X 100 Relay (JUNIOR - BOYS)", "4 X 100 Relay (JUNIOR - GIRLS)",
+    "4 X 100 Relay (YOUTH - BOYS)", "4 X 100 Relay (YOUTH - GIRLS)",
+    "4 X 100 Relay (SENIOR - MEN)", "4 X 100 Relay (SENIOR - WOMEN)",
+    "Badminton Doubles (BOYS)", "Badminton Doubles (GIRLS)",
+    "Men's Football 5s (Maximum 7 Players)", "Men's Cricket 6s (Maximum 7 Players)"
 ]
 
 def get_age_category(dob):
     today = date.today()
     age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-    if age <= 5:
-        return "Kiddies", age
-    elif 6 <= age <= 10:
-        return "Sub Junior", age
-    elif 11 <= age <= 15:
-        return "Junior", age
-    elif 16 <= age <= 35:
-        return "Youth", age
-    elif 36 <= age <= 55:
-        return "Senior", age
-    else:
-        return "Super Senior", age
+    if age <= 5: return "Kiddies", age
+    elif 6 <= age <= 10: return "Sub Junior", age
+    elif 11 <= age <= 15: return "Junior", age
+    elif 16 <= age <= 35: return "Youth", age
+    elif 36 <= age <= 55: return "Senior", age
+    else: return "Super Senior", age
 
 # -------------------------------------------------------------
 # 3. ആപ്പ് നാവിഗേഷൻ
@@ -170,20 +163,16 @@ st.markdown("---")
 # 4. രജിസ്ട്രേഷൻ പേജ്
 # -------------------------------------------------------------
 if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Single / Group)":
-    
     st.header("📝 പുതിയ അപേക്ഷ സമർപ്പിക്കുക")
     
     unit = st.selectbox("🏘️ കുടുംബ യൂണിറ്റ് തിരഞ്ഞെടുക്കുക", ALL_UNITS)
     manager_info = st.text_input("👤 ടീം മാനേജരുടെ പേരും ഫോൺ നമ്പറും (ഓപ്ഷണൽ)")
 
     st.markdown("---")
-    
     entry_type = st.radio("രജിസ്ട്രേഷൻ ടൈപ്പ്:", ["👤 വ്യക്തിഗത മത്സരങ്ങൾ (Multiple Participants)", "👥 ഗ്രൂപ്പ് മത്സരങ്ങൾ"], horizontal=True)
 
     if entry_type == "👤 വ്യക്തിഗത മത്സരങ്ങൾ (Multiple Participants)":
         st.subheader("👤 വ്യക്തിഗത മത്സരങ്ങളുടെ എൻട്രി")
-        st.caption("ഒന്നിൽ കൂടുതൽ ആളുകളുടെ വിവരങ്ങൾ ഒന്നിച്ച് ചേർത്ത് താഴെ സബ്മിറ്റ് ചെയ്യാം.")
-        
         num_participants = st.number_input("എത്ര മത്സരാർത്ഥികളെ ചേർക്കണം?", min_value=1, max_value=20, value=1, step=1)
         
         participants_data = []
@@ -193,25 +182,17 @@ if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Sing
                 st.markdown(f"#### 🎭 മത്സരാർത്ഥി #{i+1}")
                 c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 3])
                 
-                with c1:
-                    name = st.text_input(f"പേര്", key=f"name_{i}")
-                with c2:
-                    gender = st.selectbox("ലിംഗം", ["Male", "Female"], key=f"gender_{i}")
-                with c3:
-                    dob = st.date_input("ജനന തീയതി", value=date(1995, 1, 1), min_value=date(1910, 1, 1), max_value=date.today(), key=f"dob_{i}")
+                with c1: name = st.text_input(f"പേര്", key=f"name_{i}")
+                with c2: gender = st.selectbox("ലിംഗം", ["Male", "Female"], key=f"gender_{i}")
+                with c3: dob = st.date_input("ജനന തീയതി", value=date(1995, 1, 1), min_value=date(1910, 1, 1), max_value=date.today(), key=f"dob_{i}")
                 
                 age_cat, age = get_age_category(dob)
                 
                 with c4:
                     cat_type = st.selectbox("മത്സര വിഭാഗം", ["കലാമത്സരം", "കായിക മത്സരം", "സാഹിത്യമത്സരം"], key=f"cattype_{i}")
-                    
-                    if cat_type == "കലാമത്സരം":
-                        eligible = [k for k, v in ARTS_INDIVIDUAL.items() if age_cat in v]
-                    elif cat_type == "കായിക മത്സരം":
-                        eligible = [k for k, v in SPORTS_INDIVIDUAL.items() if age_cat in v]
-                    else:
-                        eligible = LITERARY_INDIVIDUAL
-                    
+                    eligible = ARTS_INDIVIDUAL if cat_type == "കലാമത്സരം" else (SPORTS_INDIVIDUAL if cat_type == "കായിക മത്സരം" else LITERARY_INDIVIDUAL)
+                    if isinstance(eligible, dict):
+                        eligible = [k for k, v in eligible.items() if age_cat in v]
                     selected_events = st.multiselect(f"ഇനങ്ങൾ ({age_cat} - വയസ്സ്: {age})", eligible, max_selections=3, key=f"events_{i}")
 
                 participants_data.append({
@@ -233,23 +214,19 @@ if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Sing
 
             if submit_bulk:
                 valid_entries = [p for p in participants_data if p["is_valid"]]
-                invalid_count = len(participants_data) - len(valid_entries)
-
-                if invalid_count > 0 and len(valid_entries) == 0:
+                if not valid_entries:
                     st.error("എല്ലാ മത്സരാർത്ഥികളുടെയും പേരും കുറഞ്ഞത് ഒരു ഇനമെങ്കിലും തിരഞ്ഞെടുക്കണം!")
-                elif len(valid_entries) > 0:
-                    for item in valid_entries:
-                        del item["is_valid"]
-                    
+                else:
+                    for item in valid_entries: del item["is_valid"]
                     try:
                         append_rows("Individual_Data", valid_entries)
+                        st.cache_data.clear() # Cache clear ചെയ്യുക
                         st.success(f"🎉 വിജയകരമായി {len(valid_entries)} അപേക്ഷകൾ ഗൂഗിൾ ഷീറ്റിൽ സേവ് ചെയ്തു.")
                     except Exception as ex:
                         st.error(f"സേവ് ചെയ്യുന്നതിൽ തടസ്സം നേരിട്ടു: {ex}")
 
     else:
         st.subheader("👥 ഗ്രൂപ്പ് മത്സരങ്ങളുടെ എൻട്രി")
-        
         with st.form("group_form_single"):
             col1, col2 = st.columns(2)
             with col1:
@@ -258,37 +235,31 @@ if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Sing
             with col2:
                 selected_zone = "ST MATHEW ZONE"
                 for z, u_list in UNITS_BY_ZONE.items():
-                    if unit in u_list:
-                        selected_zone = z
-                        break
+                    if unit in u_list: selected_zone = z; break
                 st.text_input("മേഖല (Zone)", value=selected_zone, disabled=True)
-                cluster_units = st.multiselect("ക്ലസ്റ്റർ യൂണിറ്റുകൾ (മറ്റ് യൂണിറ്റുകൾ ഉണ്ടെങ്കിൽ)", [u for u in ALL_UNITS if u != unit])
+                cluster_units = st.multiselect("ക്ലസ്റ്റർ യൂണിറ്റുകൾ", [u for u in ALL_UNITS if u != unit])
 
-            g_sub = st.form_submit_button("🚀 ഗ്രൂപ്പ് എൻട്രി സേവ് ചെയ്യുക")
-
-            if g_sub:
+            if st.form_submit_button("🚀 ഗ്രൂപ്പ് എൻട്രി സേവ് ചെയ്യുക"):
                 g_entry = [{
-                    "വിഭാഗം": g_type,
-                    "മേഖല": selected_zone,
-                    "പ്രധാന യൂണിറ്റ്": unit,
-                    "ഇനത്തിന്റെ പേര്": g_event,
-                    "ക്ലസ്റ്റർ യൂണിറ്റുകൾ": ", ".join(cluster_units) if cluster_units else "-",
-                    "ടീം മാനേജർ": manager_info,
-                    "രജിസ്റ്റർ ചെയ്ത സമയം": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    "വിഭാഗം": g_type, "മേഖല": selected_zone, "പ്രധാന യൂണിറ്റ്": unit,
+                    "ഇനത്തിന്റെ പേര്": g_event, "ക്ലസ്റ്റർ യൂണിറ്റുകൾ": ", ".join(cluster_units) if cluster_units else "-",
+                    "ടീം മാനേജർ": manager_info, "രജിസ്റ്റർ ചെയ്ത സമയം": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }]
                 try:
                     append_rows("Group_Data", g_entry)
+                    st.cache_data.clear()
                     st.success(f"🎉 ഗ്രൂപ്പ് മത്സരം ({g_event}) വിജയകരമായി രജിസ്റ്റർ ചെയ്തു!")
                 except Exception as ex:
                     st.error(f"സേവ് ചെയ്യുമ്പോൾ എറർ വന്നിരിക്കുന്നു: {ex}")
 
 # -------------------------------------------------------------
-# 5. ലൈവ് റിപ്പോർട്ട് & ഡാഷ്‌ബോർഡ് പേജ് (Zone Matching Robust Fix)
+# 5. ലൈവ് റിപ്പോർട്ട് & ഡാഷ്‌ബോർഡ് പേജ് (Full Normalization Fix)
 # -------------------------------------------------------------
 else:
     st.header("📊 സമഗ്ര റിപ്പോർട്ടുകളും സെൻട്രൽ ഡാഷ്‌ബോർഡും")
     
     if st.button("🔄 ഡാറ്റ പുതുക്കുക (Refresh Live Data)"):
+        st.cache_data.clear()
         st.rerun()
 
     with st.spinner("ഗൂഗിൾ ഷീറ്റിൽ നിന്ന് ലൈവ് വിവരങ്ങൾ ശേഖരിക്കുന്നു..."):
@@ -297,7 +268,7 @@ else:
 
     tab1, tab2, tab3 = st.tabs(["📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്", "👤 വ്യക്തിഗത റിപ്പോർട്ട്", "👥 ഗ്രൂപ്പ് റിപ്പോർട്ട്"])
 
-    # Column Matching Logic (യൂണിറ്റ് header ഏതെന്നു കണ്ടെത്തുന്നു)
+    # ഷീറ്റിൽ നിന്ന് "യൂണിറ്റ്" അടങ്ങിയ കോളത്തിന്റെ പേര് കണ്ടെത്തുന്നു
     unit_col = None
     if not df_ind.empty:
         for c in df_ind.columns:
@@ -310,14 +281,14 @@ else:
         m1.metric("ആകെ വ്യക്തിഗത എൻട്രികൾ", len(df_ind) if not df_ind.empty else 0)
         m2.metric("ആകെ ഗ്രൂപ്പ് എൻട്രികൾ", len(df_grp) if not df_grp.empty else 0)
         
-        # Calculate Unit Counts accurately regardless of space or casing
+        # Clean ചെയ്തുകൊണ്ട് കൗണ്ട് ഉണ്ടാക്കുന്നു
         counts_dict = {}
         if not df_ind.empty and unit_col:
-            # Clean string values
-            cleaned_series = df_ind[unit_col].astype(str).str.strip().str.upper()
+            # Clean String Mapping
+            cleaned_series = df_ind[unit_col].apply(clean_text)
             counts_dict = cleaned_series.value_counts().to_dict()
 
-        registered_units_count = sum(1 for u in ALL_UNITS if counts_dict.get(u.upper(), 0) > 0)
+        registered_units_count = sum(1 for u in ALL_UNITS if counts_dict.get(clean_text(u), 0) > 0)
         m3.metric("രജിസ്റ്റർ ചെയ്ത യൂണിറ്റുകൾ", f"{registered_units_count} / 40")
 
         st.markdown("---")
@@ -332,24 +303,21 @@ else:
                 st.markdown(f"#### 📍 {z_name}")
                 z_rows = []
                 for u in u_list:
-                    # Match exact unit string ignoring case and space
-                    cnt = counts_dict.get(u.strip().upper(), 0)
+                    cnt = counts_dict.get(clean_text(u), 0)
                     z_rows.append({"യൂണിറ്റ്": u, "എൻട്രികൾ": cnt})
                 
                 st.dataframe(pd.DataFrame(z_rows), use_container_width=True, hide_index=True)
 
     with tab2:
         st.subheader("👤 വ്യക്തിഗത അപേക്ഷകൾ")
-        
         filter_unit = st.selectbox("യൂണിറ്റ് അനുസരിച്ച് കാണുക:", ["എല്ലാ യൂണിറ്റുകളും"] + ALL_UNITS)
         
         if not df_ind.empty:
             display_df = df_ind.copy()
             if filter_unit != "എല്ലാ യൂണിറ്റുകളും" and unit_col:
-                display_df = display_df[display_df[unit_col].astype(str).str.strip().str.upper() == filter_unit.strip().upper()]
+                display_df = display_df[display_df[unit_col].apply(clean_text) == clean_text(filter_unit)]
             
             st.dataframe(display_df, use_container_width=True)
-            
             csv = display_df.to_csv(index=False).encode('utf-8')
             st.download_button("📥 Excel/CSV ഡൗൺലോഡ് ചെയ്യുക", csv, "individual_reports.csv", "text/csv")
         else:
