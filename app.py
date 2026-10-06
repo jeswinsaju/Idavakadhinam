@@ -167,7 +167,7 @@ nav_choice = st.radio(
 st.markdown("---")
 
 # -------------------------------------------------------------
-# 4. രജിസ്ട്രേഷൻ പേജ് (ബൾക്ക് / സിംഗിൾ പേജ് എൻട്രി)
+# 4. രജിസ്ട്രേഷൻ പേജ്
 # -------------------------------------------------------------
 if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Single / Group)":
     
@@ -238,15 +238,14 @@ if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Sing
                 if invalid_count > 0 and len(valid_entries) == 0:
                     st.error("എല്ലാ മത്സരാർത്ഥികളുടെയും പേരും കുറഞ്ഞത് ഒരു ഇനമെങ്കിലും തിരഞ്ഞെടുക്കണം!")
                 elif len(valid_entries) > 0:
-                    # Clean dictionary for upload
                     for item in valid_entries:
                         del item["is_valid"]
                     
                     try:
                         append_rows("Individual_Data", valid_entries)
-                        st.success(f"🎉 വിജയകരം! {len(valid_entries)} അപേക്ഷകൾ വിജയകരമായി ഗൂഗിൾ ഷീറ്റിൽ സേവ് ചെയ്തു.")
+                        st.success(f"🎉 വിജയകരമായി {len(valid_entries)} അപേക്ഷകൾ ഗൂഗിൾ ഷീറ്റിൽ സേവ് ചെയ്തു.")
                     except Exception as ex:
-                        st.error(f"ഡാറ്റാബേസ് സേവ് ചെയ്യുന്നതിൽ തടസ്സം നേരിട്ടു: {ex}")
+                        st.error(f"സേവ് ചെയ്യുന്നതിൽ തടസ്സം നേരിട്ടു: {ex}")
 
     else:
         st.subheader("👥 ഗ്രൂപ്പ് മത്സരങ്ങളുടെ എൻട്രി")
@@ -257,7 +256,6 @@ if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Sing
                 g_type = st.selectbox("മത്സര വിഭാഗം", ["കലാമത്സരം", "കായിക മത്സരം"])
                 g_event = st.selectbox("ഇനത്തിന്റെ പേര്", ARTS_GROUP if g_type == "കലാമത്സരം" else SPORTS_GROUP)
             with col2:
-                # Find Zone from Unit
                 selected_zone = "ST MATHEW ZONE"
                 for z, u_list in UNITS_BY_ZONE.items():
                     if unit in u_list:
@@ -285,7 +283,7 @@ if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Sing
                     st.error(f"സേവ് ചെയ്യുമ്പോൾ എറർ വന്നിരിക്കുന്നു: {ex}")
 
 # -------------------------------------------------------------
-# 5. ലൈവ് റിപ്പോർട്ട് & ഡാഷ്‌ബോർഡ് പേജ്
+# 5. ലൈവ് റിപ്പോർട്ട് & ഡാഷ്‌ബോർഡ് പേജ് (Zone Matching Robust Fix)
 # -------------------------------------------------------------
 else:
     st.header("📊 സമഗ്ര റിപ്പോർട്ടുകളും സെൻട്രൽ ഡാഷ്‌ബോർഡും")
@@ -299,42 +297,56 @@ else:
 
     tab1, tab2, tab3 = st.tabs(["📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്", "👤 വ്യക്തിഗത റിപ്പോർട്ട്", "👥 ഗ്രൂപ്പ് റിപ്പോർട്ട്"])
 
+    # Column Matching Logic (യൂണിറ്റ് header ഏതെന്നു കണ്ടെത്തുന്നു)
+    unit_col = None
+    if not df_ind.empty:
+        for c in df_ind.columns:
+            if "യൂണിറ്റ്" in str(c) or "unit" in str(c).lower():
+                unit_col = c
+                break
+
     with tab1:
         m1, m2, m3 = st.columns(3)
         m1.metric("ആകെ വ്യക്തിഗത എൻട്രികൾ", len(df_ind) if not df_ind.empty else 0)
         m2.metric("ആകെ ഗ്രൂപ്പ് എൻട്രികൾ", len(df_grp) if not df_grp.empty else 0)
         
-        reg_col = "യൂണിറ്റ്" if "യൂണിറ്റ്" in df_ind.columns else None
-        registered_units = df_ind[reg_col].nunique() if (not df_ind.empty and reg_col) else 0
-        m3.metric("രജിസ്റ്റർ ചെയ്ത യൂണിറ്റുകൾ", f"{registered_units} / 40")
+        # Calculate Unit Counts accurately regardless of space or casing
+        counts_dict = {}
+        if not df_ind.empty and unit_col:
+            # Clean string values
+            cleaned_series = df_ind[unit_col].astype(str).str.strip().str.upper()
+            counts_dict = cleaned_series.value_counts().to_dict()
+
+        registered_units_count = sum(1 for u in ALL_UNITS if counts_dict.get(u.upper(), 0) > 0)
+        m3.metric("രജിസ്റ്റർ ചെയ്ത യൂണിറ്റുകൾ", f"{registered_units_count} / 40")
 
         st.markdown("---")
         st.subheader("🏘️ 40 യൂണിറ്റുകളുടെ മേഖല തിരിച്ചുള്ള റിപ്പോർട്ട്")
         
         c1, c2 = st.columns(2)
         zones = list(UNITS_BY_ZONE.items())
-        
-        counts = {}
-        if not df_ind.empty and reg_col:
-            counts = df_ind[reg_col].astype(str).str.strip().value_counts().to_dict()
 
         for idx, (z_name, u_list) in enumerate(zones):
             target_col = c1 if idx % 2 == 0 else c2
             with target_col:
                 st.markdown(f"#### 📍 {z_name}")
-                z_rows = [{"യൂണിറ്റ്": u, "എൻട്രികൾ": counts.get(u.strip(), 0)} for u in u_list]
+                z_rows = []
+                for u in u_list:
+                    # Match exact unit string ignoring case and space
+                    cnt = counts_dict.get(u.strip().upper(), 0)
+                    z_rows.append({"യൂണിറ്റ്": u, "എൻട്രികൾ": cnt})
+                
                 st.dataframe(pd.DataFrame(z_rows), use_container_width=True, hide_index=True)
 
     with tab2:
         st.subheader("👤 വ്യക്തിഗത അപേക്ഷകൾ")
         
-        # Unit Filter
         filter_unit = st.selectbox("യൂണിറ്റ് അനുസരിച്ച് കാണുക:", ["എല്ലാ യൂണിറ്റുകളും"] + ALL_UNITS)
         
         if not df_ind.empty:
             display_df = df_ind.copy()
-            if filter_unit != "എല്ലാ യൂണിറ്റുകളും" and reg_col:
-                display_df = display_df[display_df[reg_col].astype(str).str.strip() == filter_unit.strip()]
+            if filter_unit != "എല്ലാ യൂണിറ്റുകളും" and unit_col:
+                display_df = display_df[display_df[unit_col].astype(str).str.strip().str.upper() == filter_unit.strip().upper()]
             
             st.dataframe(display_df, use_container_width=True)
             
