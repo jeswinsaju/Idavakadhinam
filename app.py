@@ -36,7 +36,10 @@ def fetch_live_data(worksheet_name):
         sh = get_gspread_client()
         ws = sh.worksheet(worksheet_name)
         records = ws.get_all_records()
-        return pd.DataFrame(records)
+        df = pd.DataFrame(records)
+        # Strip string spaces from column headers
+        df.columns = [str(c).strip() for c in df.columns]
+        return df
     except Exception as e:
         return pd.DataFrame()
 
@@ -59,7 +62,6 @@ def clean_text(text):
         return ""
     return re.sub(r'[^a-zA-Z0-9]', '', str(text)).lower()
 
-# Flexible Dynamic Column Finder
 def find_column(df, possible_names):
     if df.empty:
         return None
@@ -96,8 +98,14 @@ UNITS_BY_ZONE = {
 
 ALL_UNITS = [unit for units in UNITS_BY_ZONE.values() for unit in units]
 
+def get_zone_for_unit(unit_name):
+    for z_name, u_list in UNITS_BY_ZONE.items():
+        if unit_name in u_list:
+            return z_name
+    return "ST MATHEW ZONE"
+
 # -------------------------------------------------------------
-# 2. മാപ്പിംഗ് & റൂളുകൾ (Age Group Wise)
+# 2. മാപ്പിംഗ് & റൂളുകൾ
 # -------------------------------------------------------------
 ARTS_INDIVIDUAL = {
     "പ്രച്ഛന്നവേഷം (FANCY DRESS)": ["Kiddies", "Sub Junior", "Junior"],
@@ -173,6 +181,8 @@ if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Sing
     st.header("📝 പുതിയ അപേക്ഷ സമർപ്പിക്കുക")
     
     unit = st.selectbox("🏘️ കുടുംബ യൂണിറ്റ് തിരഞ്ഞെടുക്കുക *", ALL_UNITS)
+    detected_zone = get_zone_for_unit(unit)
+    st.info(f"📍 തിരഞ്ഞെടുത്ത യൂണിറ്റിന്റെ മേഖല (Zone): **{detected_zone}**")
     
     c_m1, c_m2 = st.columns(2)
     with c_m1:
@@ -224,6 +234,7 @@ if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Sing
 
                 participants_data.append({
                     "വിഭാഗം": cat_type,
+                    "മേഖല": detected_zone,
                     "യൂണിറ്റ്": unit,
                     "പേര്": name,
                     "DOB": str(dob),
@@ -258,25 +269,34 @@ if nav_choice == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Sing
 
     else:
         st.subheader("👥 ഗ്രൂപ്പ് മത്സരങ്ങളുടെ എൻട്രി")
+        
+        # Fixing Group Event Listing Bug (Independent Selectboxes)
+        g_type = st.selectbox("മത്സര വിഭാഗം തിരഞ്ഞെടുക്കുക", ["കലാമത്സരം", "കായിക മത്സരം"], key="group_cat_select")
+        
+        # Dynamic Events List Selection
+        available_group_events = ARTS_GROUP if g_type == "കലാമത്സരം" else SPORTS_GROUP
+        
         with st.form("group_form_single"):
             col1, col2 = st.columns(2)
             with col1:
-                g_type = st.selectbox("മത്സര വിഭാഗം", ["കലാമത്സരം", "കായിക മത്സരം"])
-                g_event = st.selectbox("ഇനത്തിന്റെ പേര്", ARTS_GROUP if g_type == "കലാമത്സരം" else SPORTS_GROUP)
+                st.info(f"തിരഞ്ഞെടുത്ത വിഭാഗം: **{g_type}**")
+                g_event = st.selectbox("ഇനത്തിന്റെ പേര് *", available_group_events, key="group_event_select")
             with col2:
-                selected_zone = "ST MATHEW ZONE"
-                for z, u_list in UNITS_BY_ZONE.items():
-                    if unit in u_list: selected_zone = z; break
-                st.text_input("മേഖല (Zone)", value=selected_zone, disabled=True)
-                cluster_units = st.multiselect("ക്ലസ്റ്റർ യൂണിറ്റുകൾ", [u for u in ALL_UNITS if u != unit])
+                st.text_input("മേഖല (Zone)", value=detected_zone, disabled=True)
+                cluster_units = st.multiselect("ക്ലസ്റ്റർ യൂണിറ്റുകൾ (ഉണ്ടെങ്കിൽ)", [u for u in ALL_UNITS if u != unit])
 
-            if st.form_submit_button("🚀 ഗ്രൂപ്പ് എൻട്രി സേവ് ചെയ്യുക"):
+            submit_group = st.form_submit_button("🚀 ഗ്രൂപ്പ് എൻട്രി സേവ് ചെയ്യുക")
+
+            if submit_group:
                 if not tm_name or not tm_phone or not atm_name or not atm_phone:
                     st.error("⚠️ മാനേജരുടെയും അസിസ്റ്റന്റ് മാനേജരുടെയും വിവരങ്ങളും ഫോൺ നമ്പറും നിർബന്ധമായും നൽകണം!")
                 else:
                     g_entry = [{
-                        "വിഭാഗം": g_type, "മേഖല": selected_zone, "പ്രധാന യൂണിറ്റ്": unit,
-                        "ഇനത്തിന്റെ പേര്": g_event, "ക്ലസ്റ്റർ യൂണിറ്റുകൾ": ", ".join(cluster_units) if cluster_units else "-",
+                        "വിഭാഗം": g_type, 
+                        "മേഖല": detected_zone, 
+                        "പ്രധാന യൂണിറ്റ്": unit,
+                        "ഇനത്തിന്റെ പേര്": g_event, 
+                        "ക്ലസ്റ്റർ യൂണിറ്റുകൾ": ", ".join(cluster_units) if cluster_units else "-",
                         "ടീം മാനേജർ": f"{tm_name} ({tm_phone})",
                         "അസിസ്റ്റന്റ് മാനേജർ": f"{atm_name} ({atm_phone})",
                         "രജിസ്റ്റർ ചെയ്ത സമയം": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -302,7 +322,7 @@ else:
         df_ind = fetch_live_data("Individual_Data")
         df_grp = fetch_live_data("Group_Data")
 
-    # Column Mapping Logic Fix
+    # Dynamic Flexible Column Matchers
     unit_col_ind = find_column(df_ind, ["യൂണിറ്റ്", "unit"])
     events_col_ind = find_column(df_ind, ["തിരഞ്ഞെടുത്ത ഇനങ്ങൾ", "events", "ഇനങ്ങൾ"])
     
@@ -312,7 +332,6 @@ else:
     tab1, tab2, tab3 = st.tabs(["📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്", "👤 വ്യക്തിഗത റിപ്പോർട്ട്", "👥 ഗ്രൂപ്പ് റിപ്പോർട്ട്"])
 
     with tab1:
-        # Metrics
         m1, m2, m3 = st.columns(3)
         m1.metric("ആകെ വ്യക്തിഗത എൻട്രികൾ", len(df_ind) if not df_ind.empty else 0)
         m2.metric("ആകെ ഗ്രൂപ്പ് എൻട്രികൾ", len(df_grp) if not df_grp.empty else 0)
@@ -327,7 +346,7 @@ else:
 
         st.markdown("---")
         
-        # Section 1: Event Wise Registrations
+        # Section 1: Event Wise Registrations Summary
         st.subheader("🎯 ഓരോ മത്സര ഇനങ്ങളുടെയും മൊത്തം എൻട്രികൾ (Total Program Registrations)")
         
         event_counts = {}
@@ -354,7 +373,7 @@ else:
 
         st.markdown("---")
 
-        # Section 2: Unit Wise Viewer Fix
+        # Section 2: Unit Wise Detailed List
         st.subheader("🏘️ കുടുംബ യൂണിറ്റ് തിരിച്ചു എൻട്രി ലിസ്റ്റ് നോക്കുക")
         
         selected_unit_view = st.selectbox("വിവരങ്ങൾ കാണേണ്ട യൂണിറ്റ് തിരഞ്ഞെടുക്കുക:", ["-- Select Unit --"] + ALL_UNITS)
@@ -362,28 +381,25 @@ else:
         if selected_unit_view != "-- Select Unit --":
             u_clean = clean_text(selected_unit_view)
             
-            # Individual Entries Check
             st.markdown(f"#### 👤 **{selected_unit_view}** - വ്യക്തിഗത എൻട്രികൾ:")
             if not df_ind.empty and unit_col_ind:
-                # Normalizing both target and dataframe column values
                 matched_ind = df_ind[df_ind[unit_col_ind].apply(clean_text) == u_clean]
                 if not matched_ind.empty:
                     st.dataframe(matched_ind, use_container_width=True, hide_index=True)
                 else:
-                    st.info(f"ℹ️ **{selected_unit_view}** യൂണിറ്റിൽ നിന്നും വ്യക്തിഗത മത്സരങ്ങളിൽ ഇതുവരെ രജിസ്ട്രേഷൻ ഒന്നും നടന്നിട്ടില്ല.")
+                    st.info(f"ℹ️ **{selected_unit_view}** യൂണിറ്റിൽ നിന്നും വ്യക്തിഗത മത്സരങ്ങളിൽ ഇതുവരെ രജിസ്ട്രേഷൻ ഒന്നുമില്ല.")
             else:
-                st.warning("⚠️ വ്യക്തിഗത ഡാറ്റാബേസിൽ (Individual Data) എൻട്രികൾ ഒന്നും ലഭ്യമല്ല അല്ലെങ്കിൽ കാണാനില്ല.")
+                st.warning("⚠️ ഡാറ്റ ലഭ്യമല്ല (Individual Data is empty).")
 
-            # Group Entries Check
             st.markdown(f"#### 👥 **{selected_unit_view}** - ഗ്രൂപ്പ് എൻട്രികൾ:")
             if not df_grp.empty and unit_col_grp:
                 matched_grp = df_grp[df_grp[unit_col_grp].apply(clean_text) == u_clean]
                 if not matched_grp.empty:
                     st.dataframe(matched_grp, use_container_width=True, hide_index=True)
                 else:
-                    st.info(f"ℹ️ **{selected_unit_view}** യൂണിറ്റിൽ നിന്നും ഗ്രൂപ്പ് മത്സരങ്ങളിൽ രജിസ്ട്രേഷൻ ഒന്നും നടന്നിട്ടില്ല.")
+                    st.info(f"ℹ️ **{selected_unit_view}** യൂണിറ്റിൽ നിന്നും ഗ്രൂപ്പ് മത്സരങ്ങളിൽ രജിസ്ട്രേഷൻ ഒന്നുമില്ല.")
             else:
-                st.warning("⚠️ ഗ്രൂപ്പ് ഡാറ്റാബേസിൽ (Group Data) എൻട്രികൾ ഒന്നും ലഭ്യമല്ല അല്ലെങ്കിൽ കാണാനില്ല.")
+                st.warning("⚠️ ഡാറ്റ ലഭ്യമല്ല (Group Data is empty).")
 
     with tab2:
         st.subheader("👤 എല്ലാ വ്യക്തിഗത അപേക്ഷകളുടെയും ലിസ്റ്റ്")
