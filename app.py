@@ -59,13 +59,14 @@ def clean_text(text):
         return ""
     return re.sub(r'[^a-zA-Z0-9]', '', str(text)).lower()
 
-# Dynamic Column Fetcher (ശരിയായ കോളം കണ്ടെത്താൻ)
+# Flexible Dynamic Column Finder
 def find_column(df, possible_names):
     if df.empty:
         return None
     for col in df.columns:
+        col_clean = str(col).strip().lower()
         for p in possible_names:
-            if p.lower() in str(col).lower():
+            if p.lower() in col_clean:
                 return col
     return None
 
@@ -301,16 +302,17 @@ else:
         df_ind = fetch_live_data("Individual_Data")
         df_grp = fetch_live_data("Group_Data")
 
-    # Column Mapping (Dynamic Extraction)
+    # Column Mapping Logic Fix
     unit_col_ind = find_column(df_ind, ["യൂണിറ്റ്", "unit"])
     events_col_ind = find_column(df_ind, ["തിരഞ്ഞെടുത്ത ഇനങ്ങൾ", "events", "ഇനങ്ങൾ"])
+    
     unit_col_grp = find_column(df_grp, ["പ്രധാന യൂണിറ്റ്", "യൂണിറ്റ്", "unit"])
     events_col_grp = find_column(df_grp, ["ഇനത്തിന്റെ പേര്", "event", "ഇനം"])
 
     tab1, tab2, tab3 = st.tabs(["📌 സെൻട്രൽ ഡാഷ്‌ബോർഡ്", "👤 വ്യക്തിഗത റിപ്പോർട്ട്", "👥 ഗ്രൂപ്പ് റിപ്പോർട്ട്"])
 
     with tab1:
-        # Core Metrics Overview
+        # Metrics
         m1, m2, m3 = st.columns(3)
         m1.metric("ആകെ വ്യക്തിഗത എൻട്രികൾ", len(df_ind) if not df_ind.empty else 0)
         m2.metric("ആകെ ഗ്രൂപ്പ് എൻട്രികൾ", len(df_grp) if not df_grp.empty else 0)
@@ -325,12 +327,11 @@ else:
 
         st.markdown("---")
         
-        # Section A: Event-Wise Total Registrations (ഓരോ ഇനത്തിലെയും ആകെ ആളുകൾ)
+        # Section 1: Event Wise Registrations
         st.subheader("🎯 ഓരോ മത്സര ഇനങ്ങളുടെയും മൊത്തം എൻട്രികൾ (Total Program Registrations)")
         
         event_counts = {}
         
-        # Counting Individual Events
         if not df_ind.empty and events_col_ind:
             for ev_list in df_ind[events_col_ind].dropna():
                 for ev in str(ev_list).split(','):
@@ -338,7 +339,6 @@ else:
                     if ev_clean:
                         event_counts[ev_clean] = event_counts.get(ev_clean, 0) + 1
                         
-        # Counting Group Events
         if not df_grp.empty and events_col_grp:
             for ev in df_grp[events_col_grp].dropna():
                 ev_clean = str(ev).strip()
@@ -346,15 +346,15 @@ else:
                     event_counts[f"[Group] {ev_clean}"] = event_counts.get(f"[Group] {ev_clean}", 0) + 1
 
         if event_counts:
-            df_event_summary = pd.DataFrame(list(event_counts.items()), columns=["മത്സര ഇനം (Event)", "ആകെ രജിസ്ട്രേഷനുകൾ (Total Registrations)"])
-            df_event_summary = df_event_summary.sort_values(by="ആകെ രജിസ്ട്രേഷനുകൾ (Total Registrations)", ascending=False)
+            df_event_summary = pd.DataFrame(list(event_counts.items()), columns=["മത്സര ഇനം (Event)", "ആകെ രജിസ്ട്രേഷനുകൾ"])
+            df_event_summary = df_event_summary.sort_values(by="ആകെ രജിസ്ട്രേഷനുകൾ", ascending=False)
             st.dataframe(df_event_summary, use_container_width=True, hide_index=True)
         else:
             st.info("ഇതുവരെ മത്സര ഇനങ്ങളിൽ എൻട്രികൾ ലഭിച്ചിട്ടില്ല.")
 
         st.markdown("---")
 
-        # Section B: Unit-Wise Registration Viewer (യൂണിറ്റ് സെലക്ട് ചെയ്യുമ്പോൾ ലിസ്റ്റ് കാണുന്നത്)
+        # Section 2: Unit Wise Viewer Fix
         st.subheader("🏘️ കുടുംബ യൂണിറ്റ് തിരിച്ചു എൻട്രി ലിസ്റ്റ് നോക്കുക")
         
         selected_unit_view = st.selectbox("വിവരങ്ങൾ കാണേണ്ട യൂണിറ്റ് തിരഞ്ഞെടുക്കുക:", ["-- Select Unit --"] + ALL_UNITS)
@@ -362,27 +362,28 @@ else:
         if selected_unit_view != "-- Select Unit --":
             u_clean = clean_text(selected_unit_view)
             
-            # Unit Individual Entries
+            # Individual Entries Check
             st.markdown(f"#### 👤 **{selected_unit_view}** - വ്യക്തിഗത എൻട്രികൾ:")
             if not df_ind.empty and unit_col_ind:
-                unit_ind_df = df_ind[df_ind[unit_col_ind].apply(clean_text) == u_clean]
-                if not unit_ind_df.empty:
-                    st.dataframe(unit_ind_df, use_container_width=True, hide_index=True)
+                # Normalizing both target and dataframe column values
+                matched_ind = df_ind[df_ind[unit_col_ind].apply(clean_text) == u_clean]
+                if not matched_ind.empty:
+                    st.dataframe(matched_ind, use_container_width=True, hide_index=True)
                 else:
-                    st.warning(f"{selected_unit_view} യൂണിറ്റിൽ നിന്ന് ഇതുവരെ വ്യക്തിഗത രജിസ്ട്രേഷനുകൾ ഒന്നും വന്നിട്ടില്ല.")
+                    st.info(f"ℹ️ **{selected_unit_view}** യൂണിറ്റിൽ നിന്നും വ്യക്തിഗത മത്സരങ്ങളിൽ ഇതുവരെ രജിസ്ട്രേഷൻ ഒന്നും നടന്നിട്ടില്ല.")
             else:
-                st.info("ഡാറ്റ ലഭ്യമല്ല.")
+                st.warning("⚠️ വ്യക്തിഗത ഡാറ്റാബേസിൽ (Individual Data) എൻട്രികൾ ഒന്നും ലഭ്യമല്ല അല്ലെങ്കിൽ കാണാനില്ല.")
 
-            # Unit Group Entries
+            # Group Entries Check
             st.markdown(f"#### 👥 **{selected_unit_view}** - ഗ്രൂപ്പ് എൻട്രികൾ:")
             if not df_grp.empty and unit_col_grp:
-                unit_grp_df = df_grp[df_grp[unit_col_grp].apply(clean_text) == u_clean]
-                if not unit_grp_df.empty:
-                    st.dataframe(unit_grp_df, use_container_width=True, hide_index=True)
+                matched_grp = df_grp[df_grp[unit_col_grp].apply(clean_text) == u_clean]
+                if not matched_grp.empty:
+                    st.dataframe(matched_grp, use_container_width=True, hide_index=True)
                 else:
-                    st.warning(f"{selected_unit_view} യൂണിറ്റിൽ നിന്ന് ഗ്രൂപ്പ് മത്സര എൻട്രികൾ വന്നിട്ടില്ല.")
+                    st.info(f"ℹ️ **{selected_unit_view}** യൂണിറ്റിൽ നിന്നും ഗ്രൂപ്പ് മത്സരങ്ങളിൽ രജിസ്ട്രേഷൻ ഒന്നും നടന്നിട്ടില്ല.")
             else:
-                st.info("ഡാറ്റ ലഭ്യമല്ല.")
+                st.warning("⚠️ ഗ്രൂപ്പ് ഡാറ്റാബേസിൽ (Group Data) എൻട്രികൾ ഒന്നും ലഭ്യമല്ല അല്ലെങ്കിൽ കാണാനില്ല.")
 
     with tab2:
         st.subheader("👤 എല്ലാ വ്യക്തിഗത അപേക്ഷകളുടെയും ലിസ്റ്റ്")
