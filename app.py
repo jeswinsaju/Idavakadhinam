@@ -1,297 +1,39 @@
+# -*- coding: utf-8 -*-
 
-Yes. The problem is in the age-category logic, not the DOB picker itself.
-
-Your current code already allows DOB back to 1910, but get_age_category() puts everyone above 55 into "Super Senior". That part is actually suitable if Super Senior means 56+. The more important issue is that your competition may allow participants above 55, so the category should explicitly support 56+ rather than imposing an upper age limit.
-
-I recommend changing the age logic to make the categories explicit and future-proof.
-
-Replace your current get_age_category() with this
-def get_age_category(dob):
-    """
-    Calculate participant age and competition age category.
-
-    Competition categories:
-    0–5   : Kiddies
-    6–10  : Sub Junior
-    11–15 : Junior
-    16–35 : Youth
-    36–55 : Senior
-    56+   : Super Senior
-
-    There is NO upper age limit.
-    Participants older than 55 are therefore eligible as Super Senior.
-    """
-
-    today = date.today()
-
-    age = today.year - dob.year - (
-        (today.month, today.day) < (dob.month, dob.day)
-    )
-
-    if age <= 5:
-        return "Kiddies", age
-
-    elif age <= 10:
-        return "Sub Junior", age
-
-    elif age <= 15:
-        return "Junior", age
-
-    elif age <= 35:
-        return "Youth", age
-
-    elif age <= 55:
-        return "Senior", age
-
-    else:
-        # 56 years and above
-        return "Super Senior", age
-Also change the DOB field
-Your current DOB field is:
-
-dob = st.date_input(
-    "ജനന തീയതി (DOB) *",
-    value=date(2010, 1, 1),
-    min_value=date(1910, 1, 1),
-    max_value=date.today(),
-    key=f"dob_{i}",
-)
-I recommend changing the minimum date to 1900, so there is definitely no artificial upper-age restriction:
-
-dob = st.date_input(
-    "ജനന തീയതി (DOB) *",
-    value=date(2010, 1, 1),
-    min_value=date(1900, 1, 1),
-    max_value=date.today(),
-    key=f"dob_{i}",
-)
-Your competition categories will then work like this
-Participant age	Category
-0–5	Kiddies
-6–10	Sub Junior
-11–15	Junior
-16–35	Youth
-36–55	Senior
-56 and above	Super Senior
-So, for example:
-
-Born in 1960 → age 66 → Super Senior
-
-Born in 1950 → age 76 → Super Senior
-
-Born in 1940 → age 86 → Super Senior
-
-Born in 1930 → age 96 → Super Senior
-
-There is no maximum age.
-
-One more important point
-Your event definitions already allow "Super Senior" for some competitions:
-
-"ലളിത ഗാനം (LIGHT MUSIC)": [
-    "Sub Junior", "Junior", "Youth", "Senior", "Super Senior"
-]
-and:
-
-"Shot Put": [
-    "Sub Junior", "Junior", "Youth", "Senior", "Super Senior"
-]
-So once the age calculation is corrected, a 56+ participant will automatically see the events that permit Super Senior.
-
-However, your current "Penalty Shootout" also allows Super Senior, while "1500 MTR Walking" only allows Super Senior. This means the event eligibility is controlled separately by ARTS_INDIVIDUAL and SPORTS_INDIVIDUAL, which is good.
-
-If your actual competition rule is Super Senior = 56+, the above fix is sufficient.
-
-
-i need updated app.py code
-
-Absolutely. The required fix is:
-
-0–5 → Kiddies
-
-6–10 → Sub Junior
-
-11–15 → Junior
-
-16–35 → Youth
-
-36–55 → Senior
-
-56+ → Super Senior
-
-No maximum age limit
-
-DOB can be selected from 1900 onward
-
-You do not need to change the Google Sheets or dashboard sections.
-
-Updated app.py
-In your existing app.py, replace the entire get_age_category() function with this:
-
-def get_age_category(dob):
-    """
-    Calculate participant age and competition age category.
-
-    Competition categories:
-        0–5   : Kiddies
-        6–10  : Sub Junior
-        11–15 : Junior
-        16–35 : Youth
-        36–55 : Senior
-        56+   : Super Senior
-
-    There is NO upper age limit.
-    """
-
-    today = date.today()
-
-    age = today.year - dob.year - (
-        (today.month, today.day) < (dob.month, dob.day)
-    )
-
-    if age <= 5:
-        return "Kiddies", age
-
-    elif age <= 10:
-        return "Sub Junior", age
-
-    elif age <= 15:
-        return "Junior", age
-
-    elif age <= 35:
-        return "Youth", age
-
-    elif age <= 55:
-        return "Senior", age
-
-    else:
-        # 56 years and above
-        return "Super Senior", age
-Then replace the DOB section inside your individual participant loop.
-
-Replace this
-dob = st.date_input(
-    "ജനന തീയതി (DOB) *",
-    value=date(2010, 1, 1),
-    min_value=date(1910, 1, 1),
-    max_value=date.today(),
-    key=f"dob_{i}",
-)
-With this
-dob = st.date_input(
-    "ജനന തീയതി (DOB) *",
-    value=date(2010, 1, 1),
-    min_value=date(1900, 1, 1),
-    max_value=date.today(),
-    key=f"dob_{i}",
-)
-Your existing code immediately below it can remain unchanged:
-
-age_cat, age = get_age_category(dob)
-and:
-
-if cat_type == "കലാമത്സരം":
-    eligible = [
-        k for k, v in ARTS_INDIVIDUAL.items()
-        if age_cat in v
-    ]
-elif cat_type == "കായിക മത്സരം":
-    eligible = [
-        k for k, v in SPORTS_INDIVIDUAL.items()
-        if age_cat in v
-    ]
-else:
-    eligible = LITERARY_INDIVIDUAL
-Important result
-For example, in 2026:
-
-DOB	Age	Category
-2022	4	Kiddies
-2017	9	Sub Junior
-2012	14	Junior
-2000	26	Youth
-1980	46	Senior
-1970	56	Super Senior
-1960	66	Super Senior
-1950	76	Super Senior
-1940	86	Super Senior
-1930	96	Super Senior
-So a participant aged 56, 70, 80, 90, or even 100 can be registered. There is no upper age restriction.
-
-One correction to your earlier wording: your current code was not actually restricting DOB to 1999. The min_value=date(1910, 1, 1) already allowed older participants. The important part is making the 56+ category explicitly unlimited, which the updated function now does.
-
-If you want, I can also restructure your complete app.py into a cleaner Dashboard v3.0 so the central dashboard correctly handles units such as ALL SAINTS and doesn't incorrectly show “no entries” when data exists.
-
-
-yes i need updated full code
-
-Yes. Below is the complete updated app.py based on your code, with the age correction included.
-
-I have also made a few stability improvements while keeping your existing Google Sheets structure and dashboard design:
-
-✅ 56+ = Super Senior with no upper age limit
-
-✅ DOB selectable from 1900
-
-✅ Better unit matching for ALL SAINTS and other units
-
-✅ Group പ്രധാന യൂണിറ്റ് + ക്ലസ്റ്റർ യൂണിറ്റുകൾ matching
-
-✅ Dashboard correctly derives unit/zone
-
-✅ Individual and Group counts remain separate
-
-✅ Better empty-data handling
-
-✅ Refresh button
-
-✅ Google connection diagnostics
-
-✅ CSV downloads
-
-✅ Recent registrations
-
-✅ Detailed unit view
-
-✅ No fake "auto refresh" claim
-
-✅ Syntax corrected and ready for streamlit run app.py
-
-Save the following as app.py.
-
-import streamlit as st
-import pandas as pd
 import re
-from datetime import datetime, date
+from datetime import date
+
+import pandas as pd
+import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 
 
-# =============================================================
-# PAGE CONFIG
-# =============================================================
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
 
 st.set_page_config(
-    page_title="St. George Parish Day Portal v3.0",
+    page_title="St. George Parish Day Portal",
     page_icon="⛪",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 
-# =============================================================
-# CONSTANTS
-# =============================================================
+# ============================================================
+# APPLICATION TITLE
+# ============================================================
 
-SHEET_INDIVIDUAL = "Individual_Data"
-SHEET_GROUP = "Group_Data"
+st.title("⛪ St. George Parish Day")
+st.caption("Registration and Central Dashboard Portal")
 
 
-# =============================================================
-# ZONES AND FAMILY UNITS
-# =============================================================
+# ============================================================
+# ZONES AND UNITS
+# ============================================================
 
-UNITS_BY_ZONE = {
-
+ZONES = {
     "ST MATHEW ZONE": [
         "ALL SAINTS",
         "ST. ALPHONSA",
@@ -305,7 +47,6 @@ UNITS_BY_ZONE = {
         "ST JOSEPH",
         "ST MICHEAL",
     ],
-
     "ST MARKOSE ZONE": [
         "MADONA",
         "HOLY FAMILY",
@@ -317,7 +58,6 @@ UNITS_BY_ZONE = {
         "ST PETER",
         "ST BENEDICT",
     ],
-
     "ST LUKE ZONE": [
         "LITTLE FLOWER",
         "ST. THOMAS",
@@ -329,7 +69,6 @@ UNITS_BY_ZONE = {
         "HOLY SPIRIT",
         "ST SEBASTIAN",
     ],
-
     "ST JOHN ZONE": [
         "MOTHER THERESA",
         "ST.JUDE",
@@ -345,217 +84,328 @@ UNITS_BY_ZONE = {
     ],
 }
 
-
 ALL_UNITS = [
     unit
-    for units in UNITS_BY_ZONE.values()
-    for unit in units
+    for zone_units in ZONES.values()
+    for unit in zone_units
 ]
 
 
-# =============================================================
-# INDIVIDUAL EVENTS
-# =============================================================
+# ============================================================
+# EVENT DEFINITIONS
+# ============================================================
 
-ARTS_INDIVIDUAL = {
-
-    "പ്രച്ഛന്നവേഷം (FANCY DRESS)": [
-        "Kiddies",
-        "Sub Junior",
-        "Junior",
-    ],
-
-    "നാടോടിനൃത്തം (FOLK DANCE)": [
-        "Kiddies",
-        "Sub Junior",
-        "Junior",
-        "Youth",
-    ],
-
-    "ലളിത ഗാനം (LIGHT MUSIC)": [
-        "Sub Junior",
-        "Junior",
-        "Youth",
-        "Senior",
-        "Super Senior",
-    ],
-
-    "ഏകാഭിനയം (MONO ACT)": [
-        "Sub Junior",
-        "Junior",
-        "Youth",
-    ],
-
-    "നിമിഷ പ്രസംഗം (MINUTE SPEECH)": [
-        "Sub Junior",
-        "Junior",
-        "Youth",
-    ],
-
-    "പുത്തൻ പാന": [
-        "Youth",
-        "Senior",
-        "Super Senior",
-    ],
+INDIVIDUAL_EVENTS = {
+    "Arts": {
+        "പ്രച്ഛന്നവേഷം (FANCY DRESS)": [
+            "Kiddies",
+            "Sub Junior",
+            "Junior",
+        ],
+        "നാടോടിനൃത്തം (FOLK DANCE)": [
+            "Kiddies",
+            "Sub Junior",
+            "Junior",
+            "Youth",
+        ],
+        "ലളിത ഗാനം (LIGHT MUSIC)": [
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+        "ഏകാഭിനയം (MONO ACT)": [
+            "Sub Junior",
+            "Junior",
+            "Youth",
+        ],
+        "നിമിഷ പ്രസംഗം (MINUTE SPEECH)": [
+            "Sub Junior",
+            "Junior",
+            "Youth",
+        ],
+        "പുത്തൻ പാന": [
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+    },
+    "Sports": {
+        "50 Mtr. Race": [
+            "Kiddies",
+        ],
+        "Spoon Race": [
+            "Kiddies",
+        ],
+        "Cricket Ball Throw": [
+            "Kiddies",
+        ],
+        "1500 MTR Walking": [
+            "Super Senior",
+        ],
+        "Penalty Shootout": [
+            "Kiddies",
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+        "Basket Ball Throw": [
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+        "100 Mtr. Race": [
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+        ],
+        "200 Mtr. Race": [
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+        ],
+        "400 Mtr. Race": [
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+        ],
+        "Long Jump": [
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+        ],
+        "Shot Put": [
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+    },
+    "Literary": {
+        "ഉപന്യാസം": [
+            "Kiddies",
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+        "കഥ രചന": [
+            "Kiddies",
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+        "കവിത രചന": [
+            "Kiddies",
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+        "ക്വിസ്": [
+            "Kiddies",
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+        "ചിത്രാങ്കനം": [
+            "Kiddies",
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+    },
 }
 
 
-# =============================================================
-# SPORTS EVENTS
-# =============================================================
-
-SPORTS_INDIVIDUAL = {
-
-    "50 Mtr. Race": [
-        "Kiddies",
-    ],
-
-    "Spoon Race": [
-        "Kiddies",
-    ],
-
-    "Cricket Ball Throw": [
-        "Kiddies",
-    ],
-
-    "1500 MTR Walking": [
-        "Super Senior",
-    ],
-
-    "Penalty Shootout": [
-        "Kiddies",
-        "Sub Junior",
-        "Junior",
-        "Youth",
-        "Senior",
-        "Super Senior",
-    ],
-
-    "Basket Ball Throw": [
-        "Sub Junior",
-        "Junior",
-        "Youth",
-        "Senior",
-        "Super Senior",
-    ],
-
-    "100 Mtr. Race": [
-        "Sub Junior",
-        "Junior",
-        "Youth",
-        "Senior",
-    ],
-
-    "200 Mtr. Race": [
-        "Sub Junior",
-        "Junior",
-        "Youth",
-        "Senior",
-    ],
-
-    "400 Mtr. Race": [
-        "Sub Junior",
-        "Junior",
-        "Youth",
-        "Senior",
-    ],
-
-    "Long Jump": [
-        "Sub Junior",
-        "Junior",
-        "Youth",
-        "Senior",
-    ],
-
-    "Shot Put": [
-        "Sub Junior",
-        "Junior",
-        "Youth",
-        "Senior",
-        "Super Senior",
-    ],
+GROUP_EVENTS = {
+    "Arts": {
+        "Group Dance - Kiddies": ["Kiddies"],
+        "Group Dance - Sub Junior": ["Sub Junior"],
+        "Group Dance - Junior": ["Junior"],
+        "Group Dance - Youth": ["Youth"],
+        "Mime": [
+            "Sub Junior",
+            "Junior",
+            "Youth",
+        ],
+        "Group Song": [
+            "Junior",
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+        "മാർഗംകളി": [
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+    },
+    "Sports": {
+        "4x100 Relay": [
+            "Kiddies",
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+        ],
+        "Badminton Doubles - Boys": [
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+        "Badminton Doubles - Girls": [
+            "Sub Junior",
+            "Junior",
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+        "Men's Football 5s": [
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+        "Men's Cricket 6s": [
+            "Youth",
+            "Senior",
+            "Super Senior",
+        ],
+    },
 }
 
 
-# =============================================================
-# LITERARY EVENTS
-# =============================================================
+# ============================================================
+# AGE CATEGORY
+# ============================================================
 
-LITERARY_INDIVIDUAL = [
-    "ഉപന്യാസം",
-    "കഥ രചന",
-    "കവിത രചന",
-    "ക്വിസ്",
-    "ചിത്രാങ്കനം",
+def get_age_category(dob):
+    """
+    Competition age categories:
+
+    0-5   = Kiddies
+    6-10  = Sub Junior
+    11-15 = Junior
+    16-35 = Youth
+    36-55 = Senior
+    56+   = Super Senior
+
+    There is NO upper age limit.
+    """
+
+    today = date.today()
+
+    age = today.year - dob.year - (
+        (today.month, today.day) < (dob.month, dob.day)
+    )
+
+    if age <= 5:
+        return "Kiddies", age
+    elif age <= 10:
+        return "Sub Junior", age
+    elif age <= 15:
+        return "Junior", age
+    elif age <= 35:
+        return "Youth", age
+    elif age <= 55:
+        return "Senior", age
+    else:
+        return "Super Senior", age
+
+
+# ============================================================
+# TEXT NORMALIZATION
+# ============================================================
+
+def clean_text(value):
+    if value is None:
+        return ""
+
+    text = str(value).strip()
+
+    text = re.sub(r"\s+", " ", text)
+
+    return text
+
+
+def _norm(value):
+    """
+    Strong normalization used for unit matching.
+    """
+
+    text = clean_text(value).upper()
+
+    replacements = {
+        ".": "",
+        ",": "",
+        "-": "",
+        "_": "",
+        "/": "",
+        "\\": "",
+        "(": "",
+        ")": "",
+    }
+
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+
+    text = re.sub(r"\s+", "", text)
+
+    return text
+
+
+def _split_values(value):
+    if value is None:
+        return []
+
+    text = clean_text(value)
+
+    if not text:
+        return []
+
+    parts = re.split(
+        r"[,;/|\n]+",
+        text
+    )
+
+    return [
+        clean_text(part)
+        for part in parts
+        if clean_text(part)
+    ]
+
+
+# ============================================================
+# GOOGLE SHEETS CONFIGURATION
+# ============================================================
+
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
 ]
 
-
-# =============================================================
-# GROUP EVENTS
-# =============================================================
-
-ARTS_GROUP = [
-
-    "സംഘ നൃത്തം (GROUP DANCE - KIDDIES)",
-
-    "സംഘ നൃത്തം (GROUP DANCE - SUB JUNIOR)",
-
-    "സംഘ നൃത്തം (GROUP DANCE - JUNIOR)",
-
-    "സംഘ നൃത്തം (GROUP DANCE - YOUTH)",
-
-    "മൂകാഭിനയം (MIME - SUB JUNIOR)",
-
-    "മൂകാഭിനയം (MIME - JUNIOR)",
-
-    "മൂകാഭിനയം (MIME - YOUTH)",
-
-    "സംഘ ഗാനം (GROUP SONG - JUNIOR)",
-
-    "സംഘ ഗാനം (GROUP SONG - YOUTH)",
-
-    "സംഘ ഗാനം (GROUP SONG - SENIOR)",
-
-    "സംഘ ഗാനം (GROUP SONG - SUPER SENIOR)",
-
-    "മാർഗംകളി (NO SPECIFIC AGE GROUP)",
-]
-
-
-SPORTS_GROUP = [
-
-    "4 X 100 Relay (SUB JUNIOR - BOYS)",
-
-    "4 X 100 Relay (SUB JUNIOR - GIRLS)",
-
-    "4 X 100 Relay (JUNIOR - BOYS)",
-
-    "4 X 100 Relay (JUNIOR - GIRLS)",
-
-    "4 X 100 Relay (YOUTH - BOYS)",
-
-    "4 X 100 Relay (YOUTH - GIRLS)",
-
-    "4 X 100 Relay (SENIOR - MEN)",
-
-    "4 X 100 Relay (SENIOR - WOMEN)",
-
-    "Badminton Doubles (BOYS)",
-
-    "Badminton Doubles (GIRLS)",
-
-    "Men's Football 5s (Maximum 7 Players)",
-
-    "Men's Cricket 6s (Maximum 7 Players)",
-]
-
-
-# =============================================================
-# GOOGLE SHEETS
-# =============================================================
 
 def get_gsheets_secrets():
-
     """
     Supports both:
 
@@ -566,32 +416,31 @@ def get_gsheets_secrets():
     [gsheets]
     """
 
-    try:
+    secrets = st.secrets
 
-        if (
-            "connections" in st.secrets
-            and "gsheets" in st.secrets["connections"]
-        ):
+    if "connections" in secrets:
+        try:
+            connections = secrets["connections"]
 
-            return st.secrets["connections"]["gsheets"]
+            if "gsheets" in connections:
+                return dict(connections["gsheets"])
+        except Exception:
+            pass
 
-        if "gsheets" in st.secrets:
-
-            return st.secrets["gsheets"]
-
-    except Exception:
-        pass
+    if "gsheets" in secrets:
+        try:
+            return dict(secrets["gsheets"])
+        except Exception:
+            pass
 
     raise RuntimeError(
-        "Google Sheets secrets not found. "
-        "Configure [connections.gsheets] "
-        "in .streamlit/secrets.toml."
+        "Google Sheets secrets were not found. "
+        "Configure [connections.gsheets] or [gsheets] in Streamlit Secrets."
     )
 
 
 def get_gspread_client():
-
-    secrets = get_gsheets_secrets()
+    config = get_gsheets_secrets()
 
     required = [
         "type",
@@ -605,1218 +454,610 @@ def get_gspread_client():
     missing = [
         key
         for key in required
-        if not secrets.get(key)
+        if key not in config or not config[key]
     ]
 
     if missing:
-
         raise RuntimeError(
-            "Missing Google credential fields: "
+            "Missing Google credentials: "
             + ", ".join(missing)
         )
 
-    private_key = str(
-        secrets["private_key"]
-    ).replace("\\n", "\n")
+    private_key = str(config["private_key"])
 
-    creds_dict = {
+    if "\\n" in private_key:
+        private_key = private_key.replace("\\n", "\n")
 
-        "type": secrets["type"],
-
-        "project_id": secrets["project_id"],
-
-        "private_key_id": secrets["private_key_id"],
-
+    service_account_info = {
+        "type": config["type"],
+        "project_id": config["project_id"],
+        "private_key_id": config["private_key_id"],
         "private_key": private_key,
-
-        "client_email": secrets["client_email"],
-
-        "client_id": secrets["client_id"],
-
-        "token_uri": secrets.get(
-            "token_uri",
-            "https://oauth2.googleapis.com/token",
-        ),
+        "client_email": config["client_email"],
+        "client_id": config["client_id"],
     }
 
-    creds = Credentials.from_service_account_info(
+    if "auth_uri" in config:
+        service_account_info["auth_uri"] = config["auth_uri"]
 
-        creds_dict,
+    if "token_uri" in config:
+        service_account_info["token_uri"] = config["token_uri"]
 
-        scopes=[
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive",
-        ],
+    credentials = Credentials.from_service_account_info(
+        service_account_info,
+        scopes=SCOPES,
     )
 
-    return gspread.authorize(creds)
+    return gspread.authorize(credentials)
 
 
-def get_spreadsheet():
+def get_spreadsheet(client):
+    config = get_gsheets_secrets()
 
-    secrets = get_gsheets_secrets()
-
-    spreadsheet_url = (
-        secrets.get("spreadsheet")
-        or secrets.get("spreadsheet_url")
+    spreadsheet_url = config.get(
+        "spreadsheet_url",
+        config.get("spreadsheet", ""),
     )
 
     if not spreadsheet_url:
-
         raise RuntimeError(
-            "Spreadsheet URL is missing. "
-            "Add 'spreadsheet' or "
-            "'spreadsheet_url' in secrets.toml."
+            "Spreadsheet URL/name not found in Google Sheets secrets."
         )
 
-    client = get_gspread_client()
+    spreadsheet_url = str(spreadsheet_url).strip()
 
-    return client.open_by_url(spreadsheet_url)
+    if spreadsheet_url.startswith("http"):
+        return client.open_by_url(spreadsheet_url)
+
+    return client.open(spreadsheet_url)
 
 
-def get_worksheet(
-    worksheet_name,
-    create_if_missing=False,
-):
-
-    sh = get_spreadsheet()
-
+def get_worksheet(spreadsheet, worksheet_name):
     try:
-
-        return sh.worksheet(worksheet_name)
+        return spreadsheet.worksheet(worksheet_name)
 
     except gspread.WorksheetNotFound:
-
-        if create_if_missing:
-
-            return sh.add_worksheet(
-                title=worksheet_name,
-                rows=1000,
-                cols=30,
-            )
-
-        raise RuntimeError(
-            f"Worksheet '{worksheet_name}' "
-            "was not found in the Google Sheet."
+        return spreadsheet.add_worksheet(
+            title=worksheet_name,
+            rows=1000,
+            cols=40,
         )
 
 
-def fetch_live_data(worksheet_name):
+# ============================================================
+# GOOGLE SHEETS DATA FUNCTIONS
+# ============================================================
 
-    """
-    Read complete worksheet into DataFrame.
-    """
-
+def fetch_live_data(worksheet):
     try:
-
-        ws = get_worksheet(worksheet_name)
-
-        records = ws.get_all_records()
+        records = worksheet.get_all_records()
 
         if not records:
+            return pd.DataFrame()
 
-            return pd.DataFrame(), None
-
-        df = pd.DataFrame(records)
-
-        df.columns = [
-            str(column).strip()
-            for column in df.columns
-        ]
-
-        return df, None
+        return pd.DataFrame(records)
 
     except Exception as exc:
+        st.error(
+            f"Unable to read Google Sheet: {exc}"
+        )
+        return pd.DataFrame()
 
-        return pd.DataFrame(), str(exc)
 
+def append_rows(worksheet, rows):
+    """
+    Append dictionary rows according to the worksheet headers.
+    """
 
-def append_rows(
-    worksheet_name,
-    list_of_dicts,
-):
-
-    if not list_of_dicts:
+    if not rows:
         return
 
-    ws = get_worksheet(
-        worksheet_name,
-        create_if_missing=True,
-    )
-
-    existing_values = ws.get_all_values()
+    existing_values = worksheet.get_all_values()
 
     if not existing_values:
+        headers = list(rows[0].keys())
 
-        headers = list(
-            list_of_dicts[0].keys()
-        )
-
-        ws.append_row(
+        worksheet.append_row(
             headers,
             value_input_option="USER_ENTERED",
         )
 
-    headers = ws.row_values(1)
+    else:
+        headers = existing_values[0]
 
-    if not headers:
+    values = []
 
-        headers = list(
-            list_of_dicts[0].keys()
+    for row in rows:
+        values.append(
+            [
+                row.get(header, "")
+                for header in headers
+            ]
         )
 
-        ws.append_row(
-            headers,
+    if values:
+        worksheet.append_rows(
+            values,
             value_input_option="USER_ENTERED",
         )
-
-    rows = []
-
-    for item in list_of_dicts:
-
-        rows.append([
-            item.get(header, "")
-            for header in headers
-        ])
-
-    ws.append_rows(
-        rows,
-        value_input_option="USER_ENTERED",
-    )
 
 
 def test_google_connection():
-
     try:
+        client = get_gspread_client()
+        spreadsheet = get_spreadsheet(client)
 
-        sh = get_spreadsheet()
-
-        return True, sh.title
+        return True, spreadsheet.title
 
     except Exception as exc:
-
         return False, str(exc)
 
 
-# =============================================================
-# TEXT / MATCHING HELPERS
-# =============================================================
+# ============================================================
+# COLUMN HELPERS
+# ============================================================
 
-def clean_text(value):
-
-    if value is None:
-        return ""
-
-    return re.sub(
-        r"[^a-zA-Z0-9]",
-        "",
-        str(value),
-    ).lower()
-
-
-def normalized_text(value):
-
-    if value is None:
-        return ""
-
-    value = str(value).strip().lower()
-
-    value = re.sub(
-        r"[\u200b-\u200f\u202a-\u202e]",
-        "",
-        value,
-    )
-
-    value = re.sub(
-        r"[^a-z0-9]+",
-        "",
-        value,
-    )
-
-    return value
-
-
-def _norm(value):
-
-    return normalized_text(value)
-
-
-def _split_values(value):
-
-    if value is None:
-        return []
-
-    return [
-        str(x).strip()
-        for x in re.split(
-            r"[,;\n|]+",
-            str(value),
-        )
-        if str(x).strip()
-    ]
-
-
-def find_column(
-    df,
-    possible_names,
-):
-
-    if df.empty:
+def find_column(df, candidates):
+    if df is None or df.empty:
         return None
 
-    for column in df.columns:
+    columns = list(df.columns)
 
-        column_clean = clean_text(column)
+    normalized_columns = {
+        _norm(column): column
+        for column in columns
+    }
 
-        for possible in possible_names:
+    for candidate in candidates:
+        key = _norm(candidate)
 
-            if clean_text(possible) in column_clean:
+        if key in normalized_columns:
+            return normalized_columns[key]
 
-                return column
+    # Partial match
+    for candidate in candidates:
+        key = _norm(candidate)
+
+        for normalized, original in normalized_columns.items():
+            if key and key in normalized:
+                return original
 
     return None
 
 
-# =============================================================
-# UNIT / ZONE HELPERS
-# =============================================================
+def _row_has_unit(row, target_unit):
+    """
+    Check whether a row belongs to the selected unit.
 
-def get_zone_for_unit(unit_name):
+    Preferred columns are checked first.
+    A fallback scan across all cells is also performed.
+    """
 
-    target = _norm(unit_name)
-
-    for zone, units in UNITS_BY_ZONE.items():
-
-        for unit in units:
-
-            if _norm(unit) == target:
-
-                return zone
-
-    return "UNKNOWN"
-
-
-def _row_has_unit(
-    row,
-    unit_name,
-    preferred_col=None,
-):
-
-    target = _norm(unit_name)
+    target = _norm(target_unit)
 
     if not target:
         return False
 
-    columns = []
+    preferred_columns = [
+        "Unit",
+        "Unit Name",
+        "യൂണിറ്റ്",
+        "പ്രധാന യൂണിറ്റ്",
+        "Main Unit",
+        "Cluster Unit",
+        "Cluster Units",
+        "Unit/Zone",
+    ]
 
-    if (
-        preferred_col
-        and preferred_col in row.index
-    ):
+    for column_name in preferred_columns:
 
-        columns.append(preferred_col)
+        actual_column = None
 
-    columns.extend([
-        c
-        for c in row.index
-        if c not in columns
-    ])
+        for column in row.index:
+            if _norm(column) == _norm(column_name):
+                actual_column = column
+                break
 
-    for column in columns:
-
-        value = row.get(column, "")
-
-        if value is None:
+        if actual_column is None:
             continue
 
-        # First check separated values.
-        parts = _split_values(value)
+        cell_value = row.get(actual_column, "")
 
-        for part in parts:
-
-            if _norm(part) == target:
-
+        for value in _split_values(cell_value):
+            if _norm(value) == target:
                 return True
 
-        # Then check complete cell.
-        if _norm(value) == target:
+    # Fallback: scan the complete row.
+    for value in row.values:
 
-            return True
+        for part in _split_values(value):
+
+            if _norm(part) == target:
+                return True
+
+            # Handle text containing a unit name.
+            if target and target in _norm(part):
+                return True
 
     return False
 
 
-def _rows_for_unit(
-    df,
-    unit_name,
-    preferred_col=None,
-):
-
-    if df.empty:
-
-        return df.copy()
+def _rows_for_unit(df, unit):
+    if df is None or df.empty:
+        return pd.DataFrame()
 
     mask = df.apply(
-
-        lambda row:
-        _row_has_unit(
-            row,
-            unit_name,
-            preferred_col,
-        ),
-
+        lambda row: _row_has_unit(row, unit),
         axis=1,
     )
 
     return df.loc[mask].copy()
 
 
-def _derive_unit(
-    row,
-    preferred_col=None,
-):
+# ============================================================
+# ZONE HELPERS
+# ============================================================
 
+def get_zone_for_unit(unit):
+    target = _norm(unit)
+
+    for zone, units in ZONES.items():
+
+        for current_unit in units:
+
+            if _norm(current_unit) == target:
+                return zone
+
+    return "UNASSIGNED"
+
+
+def _derive_unit(row):
     """
-    Determine which known family unit belongs
-    to this registration row.
-
-    This is especially important for:
-
-    Individual_Data:
-        യൂണിറ്റ്
-
-    Group_Data:
-        പ്രധാന യൂണിറ്റ്
-        ക്ലസ്റ്റർ യൂണിറ്റുകൾ
+    Try to identify the main unit from a registration row.
     """
 
-    # ---------------------------------------------------------
-    # 1. Check preferred unit column first
-    # ---------------------------------------------------------
+    preferred_columns = [
+        "Unit",
+        "Unit Name",
+        "യൂണിറ്റ്",
+        "പ്രധാന യൂണിറ്റ്",
+        "Main Unit",
+        "Main Unit Name",
+    ]
 
-    if (
-        preferred_col
-        and preferred_col in row.index
-    ):
+    for preferred in preferred_columns:
 
-        preferred_value = str(
-            row.get(
-                preferred_col,
-                "",
-            )
-        ).strip()
+        for column in row.index:
+
+            if _norm(column) == _norm(preferred):
+
+                value = clean_text(row.get(column, ""))
+
+                if value:
+                    for unit in ALL_UNITS:
+                        if _norm(unit) == _norm(value):
+                            return unit
+
+                    # Partial matching
+                    for unit in ALL_UNITS:
+                        if _norm(unit) in _norm(value):
+                            return unit
+
+    # Search every cell as fallback
+    for value in row.values:
+
+        value_text = clean_text(value)
+
+        if not value_text:
+            continue
 
         for unit in ALL_UNITS:
 
-            if _norm(preferred_value) == _norm(unit):
-
+            if _norm(unit) == _norm(value_text):
                 return unit
 
-    # ---------------------------------------------------------
-    # 2. Check every known unit against every column
-    # ---------------------------------------------------------
-
-    for unit in ALL_UNITS:
-
-        if _row_has_unit(
-            row,
-            unit,
-            preferred_col,
-        ):
-
-            return unit
+            if _norm(unit) in _norm(value_text):
+                return unit
 
     return "UNKNOWN"
 
 
-def _prepare_dashboard_data(
-    df,
-    preferred_unit_col,
-):
+# ============================================================
+# DASHBOARD DATA PREPARATION
+# ============================================================
 
-    if df.empty:
+def _prepare_dashboard_data(df):
+    if df is None or df.empty:
+        return df
 
-        return df.copy()
+    data = df.copy()
 
-    work = df.copy()
-
-    work["__Dashboard Unit"] = work.apply(
-
-        lambda row:
-        _derive_unit(
-            row,
-            preferred_unit_col,
-        ),
-
+    data["Dashboard Unit"] = data.apply(
+        _derive_unit,
         axis=1,
     )
 
-    work["__Dashboard Zone"] = (
-        work["__Dashboard Unit"]
-        .apply(
-            lambda unit:
-            get_zone_for_unit(unit)
-            if unit != "UNKNOWN"
-            else "UNKNOWN"
-        )
+    data["Dashboard Zone"] = data["Dashboard Unit"].apply(
+        get_zone_for_unit
     )
 
-    return work
+    return data
 
 
-# =============================================================
-# EVENT HELPERS
-# =============================================================
-
-def _event_counts(
-    df,
-    event_col,
-    prefix="",
-):
-
-    counts = {}
-
-    if df.empty or not event_col:
-
-        return counts
-
-    for value in df[event_col].fillna(""):
-
-        for event in _split_values(value):
-
-            if event:
-
-                label = (
-                    f"{prefix}{event}"
-                    if prefix
-                    else event
-                )
-
-                counts[label] = (
-                    counts.get(label, 0) + 1
-                )
-
-    return counts
-
-
-# =============================================================
-# AGE CATEGORY
-# =============================================================
-
-def get_age_category(dob):
-
+def _event_counts(df):
     """
-    Competition age categories:
-
-        0–5    = Kiddies
-        6–10   = Sub Junior
-        11–15  = Junior
-        16–35  = Youth
-        36–55  = Senior
-        56+    = Super Senior
-
-    IMPORTANT:
-    There is NO upper age limit.
+    Try to identify an event column and return event counts.
     """
 
-    today = date.today()
+    if df is None or df.empty:
+        return pd.Series(dtype="int64")
 
-    age = (
-        today.year
-        - dob.year
-        - (
-            (today.month, today.day)
-            < (dob.month, dob.day)
-        )
+    event_column = find_column(
+        df,
+        [
+            "Event",
+            "Event Name",
+            "Competition",
+            "Item",
+            "ഇനം",
+            "മത്സരം",
+        ],
     )
 
-    if age <= 5:
+    if not event_column:
+        return pd.Series(dtype="int64")
 
-        return "Kiddies", age
+    series = (
+        df[event_column]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
 
-    elif age <= 10:
+    series = series[series != ""]
 
-        return "Sub Junior", age
-
-    elif age <= 15:
-
-        return "Junior", age
-
-    elif age <= 35:
-
-        return "Youth", age
-
-    elif age <= 55:
-
-        return "Senior", age
-
-    else:
-
-        # 56 years and above
-        return "Super Senior", age
+    return series.value_counts()
 
 
-# =============================================================
-# CONNECTION STATUS
-# =============================================================
+# ============================================================
+# SESSION STATE
+# ============================================================
 
-def show_connection_status():
+if "page" not in st.session_state:
+    st.session_state.page = "Registration"
+
+if "refresh_counter" not in st.session_state:
+    st.session_state.refresh_counter = 0
+
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+with st.sidebar:
+
+    st.header("⛪ Parish Day Portal")
+
+    page = st.radio(
+        "Navigation",
+        [
+            "Registration",
+            "Central Dashboard",
+            "Google Sheets Test",
+        ],
+        index=[
+            "Registration",
+            "Central Dashboard",
+            "Google Sheets Test",
+        ].index(st.session_state.page),
+    )
+
+    st.session_state.page = page
+
+    st.divider()
+
+    st.subheader("Age Categories")
+
+    st.markdown(
+        """
+        **Kiddies:** 0 - 5 years
+
+        **Sub Junior:** 6 - 10 years
+
+        **Junior:** 11 - 15 years
+
+        **Youth:** 16 - 35 years
+
+        **Senior:** 36 - 55 years
+
+        **Super Senior:** 56+ years
+        """
+    )
+
+    st.divider()
 
     st.caption(
-        "✅ Dashboard v3.0 • "
-        "Google Sheets Live Registration System"
+        "St. George Parish Day Registration System"
     )
 
-    with st.sidebar:
 
-        st.markdown(
-            "### 🔧 System Status"
-        )
-
-        if st.button(
-            "🔌 Test Google Sheets Connection",
-            use_container_width=True,
-        ):
-
-            ok, result = (
-                test_google_connection()
-            )
-
-            if ok:
-
-                st.success(
-                    f"Connected: {result}"
-                )
-
-            else:
-
-                st.error(
-                    "Connection failed"
-                )
-
-                st.code(result)
-
-        st.caption(
-            "Use the connection test if "
-            "dashboard data is empty."
-        )
-
-
-# =============================================================
-# HEADER
-# =============================================================
-
-st.title(
-    "⛪ സെന്റ് ജോർജ്ജസ് ചർച്ച്, മുക്കാട്ടുകര"
-)
-
-st.subheader(
-    "ഇടവക ദിന മത്സര രജിസ്ട്രേഷൻ പോർട്ടൽ"
-)
-
-show_connection_status()
-
-
-# =============================================================
-# NAVIGATION
-# =============================================================
-
-nav_choice = st.radio(
-
-    "📌 പേജ് തിരഞ്ഞെടുക്കുക:",
-
-    [
-        "✍️ പുതിയ രജിസ്ട്രേഷൻ (Single / Group)",
-        "📊 ലൈവ് റിപ്പോർട്ട് & ഡാഷ്‌ബോർഡ്",
-    ],
-
-    horizontal=True,
-)
-
-st.markdown("---")
-
-
-# =============================================================
+# ============================================================
 # REGISTRATION PAGE
-# =============================================================
+# ============================================================
 
-if (
-    nav_choice
-    == "✍️ പുതിയ രജിസ്ട്രേഷൻ (Single / Group)"
-):
+if page == "Registration":
 
-    st.header(
-        "📝 പുതിയ അപേക്ഷ സമർപ്പിക്കുക"
-    )
+    st.header("📝 Participant Registration")
 
-    # ---------------------------------------------------------
-    # UNIT
-    # ---------------------------------------------------------
-
-    unit = st.selectbox(
-
-        "🏘️ കുടുംബ യൂണിറ്റ് തിരഞ്ഞെടുക്കുക *",
-
-        ALL_UNITS,
-
-    )
-
-    detected_zone = get_zone_for_unit(unit)
-
-    st.info(
-        f"📍 തിരഞ്ഞെടുത്ത യൂണിറ്റിന്റെ മേഖല (Zone): "
-        f"**{detected_zone}**"
-    )
-
-    # ---------------------------------------------------------
-    # MANAGER DETAILS
-    # ---------------------------------------------------------
-
-    c_m1, c_m2 = st.columns(2)
-
-    with c_m1:
-
-        tm_name = st.text_input(
-            "👤 ടീം മാനേജരുടെ പേര് *"
-        )
-
-        tm_phone = st.text_input(
-            "📞 ടീം മാനേജരുടെ ഫോൺ നമ്പർ *"
-        )
-
-    with c_m2:
-
-        atm_name = st.text_input(
-            "👤 അസിസ്റ്റന്റ് ടീം മാനേജരുടെ പേര് *"
-        )
-
-        atm_phone = st.text_input(
-            "📞 അസിസ്റ്റന്റ് ടീം മാനേജരുടെ ഫോൺ നമ്പർ *"
-        )
-
-    st.markdown("---")
-
-    # ---------------------------------------------------------
-    # REGISTRATION TYPE
-    # ---------------------------------------------------------
-
-    entry_type = st.radio(
-
-        "രജിസ്ട്രേഷൻ ടൈപ്പ്:",
-
+    registration_type = st.radio(
+        "Registration Type",
         [
-            "👤 വ്യക്തിഗത മത്സരങ്ങൾ (Multiple Participants)",
-            "👥 ഗ്രൂപ്പ് മത്സരങ്ങൾ",
+            "Individual Registration",
+            "Group Registration",
         ],
-
         horizontal=True,
     )
 
-    # =========================================================
+    st.divider()
+
+    # --------------------------------------------------------
     # INDIVIDUAL REGISTRATION
-    # =========================================================
+    # --------------------------------------------------------
 
-    if (
-        entry_type
-        == "👤 വ്യക്തിഗത മത്സരങ്ങൾ (Multiple Participants)"
-    ):
+    if registration_type == "Individual Registration":
 
-        st.subheader(
-            "👤 വ്യക്തിഗത മത്സരങ്ങളുടെ എൻട്രി"
-        )
+        st.subheader("👤 Individual Registration")
 
-        num_participants = st.number_input(
-
-            "എത്ര മത്സരാർത്ഥികളെ ചേർക്കണം?",
-
-            min_value=1,
-
-            max_value=20,
-
-            value=1,
-
-            step=1,
-
-        )
-
-        participants_data = []
-
-        with st.form(
-            "bulk_individual_form"
-        ):
-
-            for i in range(
-                int(num_participants)
-            ):
-
-                st.markdown(
-                    f"#### 🎭 മത്സരാർത്ഥി #{i + 1}"
-                )
-
-                c1, c2, c3, c4 = st.columns(
-                    [2, 1.2, 1.8, 3]
-                )
-
-                # -------------------------------------------------
-                # NAME
-                # -------------------------------------------------
-
-                with c1:
-
-                    name = st.text_input(
-                        "പേര് *",
-                        key=f"name_{i}",
-                    )
-
-                # -------------------------------------------------
-                # GENDER
-                # -------------------------------------------------
-
-                with c2:
-
-                    gender = st.selectbox(
-
-                        "ലിംഗം",
-
-                        [
-                            "Male",
-                            "Female",
-                        ],
-
-                        key=f"gender_{i}",
-                    )
-
-                # -------------------------------------------------
-                # DOB
-                # -------------------------------------------------
-
-                with c3:
-
-                    dob = st.date_input(
-
-                        "ജനന തീയതി (DOB) *",
-
-                        value=date(
-                            2010,
-                            1,
-                            1,
-                        ),
-
-                        # IMPORTANT:
-                        # Allows participants born
-                        # before 1970, 1960, etc.
-                        min_value=date(
-                            1900,
-                            1,
-                            1,
-                        ),
-
-                        max_value=date.today(),
-
-                        key=f"dob_{i}",
-                    )
-
-                # -------------------------------------------------
-                # AGE
-                # -------------------------------------------------
-
-                age_cat, age = (
-                    get_age_category(dob)
-                )
-
-                # -------------------------------------------------
-                # EVENTS
-                # -------------------------------------------------
-
-                with c4:
-
-                    cat_type = st.selectbox(
-
-                        "മത്സര വിഭാഗം",
-
-                        [
-                            "കലാമത്സരം",
-                            "കായിക മത്സരം",
-                            "സാഹിത്യമത്സരം",
-                        ],
-
-                        key=f"cattype_{i}",
-                    )
-
-                    if (
-                        cat_type
-                        == "കലാമത്സരം"
-                    ):
-
-                        eligible = [
-
-                            event
-
-                            for event, categories
-                            in ARTS_INDIVIDUAL.items()
-
-                            if age_cat
-                            in categories
-                        ]
-
-                    elif (
-                        cat_type
-                        == "കായിക മത്സരം"
-                    ):
-
-                        eligible = [
-
-                            event
-
-                            for event, categories
-                            in SPORTS_INDIVIDUAL.items()
-
-                            if age_cat
-                            in categories
-                        ]
-
-                    else:
-
-                        eligible = (
-                            LITERARY_INDIVIDUAL
-                        )
-
-                    st.caption(
-                        f"പ്രായം: **{age}** | "
-                        f"Age Category: **{age_cat}**"
-                    )
-
-                    if eligible:
-
-                        selected_events = st.multiselect(
-
-                            f"ഇനങ്ങൾ "
-                            f"({age_cat} - വയസ്സ്: {age}) *",
-
-                            eligible,
-
-                            max_selections=3,
-
-                            key=f"events_{i}",
-                        )
-
-                    else:
-
-                        selected_events = []
-
-                        st.warning(
-                            "ഈ പ്രായ വിഭാഗത്തിന് "
-                            "ഈ മത്സര വിഭാഗത്തിൽ "
-                            "ഇനങ്ങൾ ലഭ്യമല്ല."
-                        )
-
-                participants_data.append({
-
-                    "വിഭാഗം": cat_type,
-
-                    "മേഖല": detected_zone,
-
-                    "യൂണിറ്റ്": unit,
-
-                    "പേര്": name.strip(),
-
-                    "DOB": str(dob),
-
-                    "വയസ്സ്": age,
-
-                    "ഏജ് കാറ്റഗറി": age_cat,
-
-                    "ലിംഗം": gender,
-
-                    "തിരഞ്ഞെടുത്ത ഇനങ്ങൾ":
-                        ", ".join(
-                            selected_events
-                        ),
-
-                    "ടീം മാനേജർ": (
-
-                        f"{tm_name.strip()} "
-                        f"({tm_phone.strip()})"
-
-                        if tm_name.strip()
-
-                        else ""
-                    ),
-
-                    "അസിസ്റ്റന്റ് മാനേജർ": (
-
-                        f"{atm_name.strip()} "
-                        f"({atm_phone.strip()})"
-
-                        if atm_name.strip()
-
-                        else ""
-                    ),
-
-                    "രജിസ്റ്റർ ചെയ്ത സമയം":
-                        datetime.now().strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        ),
-
-                    "_valid":
-                        bool(
-                            name.strip()
-                            and selected_events
-                        ),
-                })
-
-                st.markdown("---")
-
-            submit_bulk = st.form_submit_button(
-
-                "🚀 വ്യക്തിഗത എൻട്രികൾ "
-                "ഒന്നായി സേവ് ചെയ്യുക",
-
-                use_container_width=True,
-            )
-
-        # -----------------------------------------------------
-        # SAVE INDIVIDUAL
-        # -----------------------------------------------------
-
-        if submit_bulk:
-
-            if (
-                not tm_name.strip()
-                or not tm_phone.strip()
-                or not atm_name.strip()
-                or not atm_phone.strip()
-            ):
-
-                st.error(
-
-                    "⚠️ മാനേജരുടെയും "
-                    "അസിസ്റ്റന്റ് മാനേജരുടെയും "
-                    "പേരും ഫോൺ നമ്പറും നിർബന്ധമാണ്."
-                )
-
-            else:
-
-                valid_entries = [
-
-                    participant
-
-                    for participant
-                    in participants_data
-
-                    if participant["_valid"]
-                ]
-
-                if (
-                    len(valid_entries)
-                    != len(participants_data)
-                ):
-
-                    st.error(
-
-                        "⚠️ എല്ലാ മത്സരാർത്ഥികളുടെയും "
-                        "പേരും കുറഞ്ഞത് ഒരു "
-                        "മത്സര ഇനവും നൽകുക."
-                    )
-
-                else:
-
-                    for item in valid_entries:
-
-                        item.pop(
-                            "_valid",
-                            None,
-                        )
-
-                    try:
-
-                        append_rows(
-                            SHEET_INDIVIDUAL,
-                            valid_entries,
-                        )
-
-                        st.success(
-
-                            f"🎉 {len(valid_entries)} "
-                            "അപേക്ഷകൾ Google Sheets-ൽ "
-                            "വിജയകരമായി സേവ് ചെയ്തു."
-                        )
-
-                        st.rerun()
-
-                    except Exception as exc:
-
-                        st.error(
-
-                            "❌ Google Sheets-ലേക്ക് "
-                            "സേവ് ചെയ്യാൻ കഴിഞ്ഞില്ല."
-                        )
-
-                        with st.expander(
-                            "🔍 Technical error"
-                        ):
-
-                            st.exception(exc)
-
-    # =========================================================
-    # GROUP REGISTRATION
-    # =========================================================
-
-    else:
-
-        st.subheader(
-            "👥 ഗ്രൂപ്പ് മത്സരങ്ങളുടെ എൻട്രി"
-        )
-
-        g_type = st.selectbox(
-
-            "മത്സര വിഭാഗം തിരഞ്ഞെടുക്കുക",
-
-            [
-                "കലാമത്സരം",
-                "കായിക മത്സരം",
-            ],
-
-            key="group_cat_select",
-        )
-
-        available_group_events = (
-
-            ARTS_GROUP
-
-            if g_type == "കലാമത്സരം"
-
-            else SPORTS_GROUP
-        )
-
-        with st.form(
-            "group_form_single"
-        ):
+        with st.form("individual_registration_form"):
 
             col1, col2 = st.columns(2)
 
             with col1:
 
-                st.info(
-                    f"തിരഞ്ഞെടുത്ത വിഭാഗം: "
-                    f"**{g_type}**"
+                name = st.text_input(
+                    "പങ്കെടുക്കുന്ന വ്യക്തിയുടെ പേര് *"
                 )
 
-                g_event = st.selectbox(
+                unit = st.selectbox(
+                    "യൂണിറ്റ് *",
+                    ALL_UNITS,
+                )
 
-                    "ഇനത്തിന്റെ പേര് *",
+                phone = st.text_input(
+                    "ഫോൺ നമ്പർ"
+                )
 
-                    available_group_events,
-
-                    key="group_event_select",
+                gender = st.selectbox(
+                    "ലിംഗം",
+                    [
+                        "Male",
+                        "Female",
+                        "Other",
+                    ],
                 )
 
             with col2:
 
+                dob = st.date_input(
+                    "ജനന തീയതി (DOB) *",
+                    value=date(2010, 1, 1),
+                    min_value=date(1900, 1, 1),
+                    max_value=date.today(),
+                )
+
+                age_category, calculated_age = get_age_category(
+                    dob
+                )
+
+                st.info(
+                    f"Calculated Age: **{calculated_age} years**\n\n"
+                    f"Category: **{age_category}**"
+                )
+
+                zone = get_zone_for_unit(unit)
+
                 st.text_input(
-
-                    "മേഖല (Zone)",
-
-                    value=detected_zone,
-
+                    "Zone",
+                    value=zone,
                     disabled=True,
                 )
 
-                cluster_units = st.multiselect(
+            st.divider()
 
-                    "ക്ലസ്റ്റർ യൂണിറ്റുകൾ (ഉണ്ടെങ്കിൽ)",
+            st.subheader("🎯 Select Events")
 
-                    [
-                        u
-                        for u in ALL_UNITS
-                        if u != unit
-                    ],
+            selected_events = []
 
-                    key="cluster_units",
+            for category, events in INDIVIDUAL_EVENTS.items():
+
+                st.markdown(
+                    f"### {category}"
                 )
 
-            submit_group = st.form_submit_button(
+                for event_name, categories in events.items():
 
-                "🚀 ഗ്രൂപ്പ് എൻട്രി സേവ് ചെയ്യുക",
+                    if age_category in categories:
 
+                        selected = st.checkbox(
+                            event_name,
+                            key=f"individual_{category}_{event_name}",
+                        )
+
+                        if selected:
+                            selected_events.append(
+                                event_name
+                            )
+
+            st.divider()
+
+            submitted = st.form_submit_button(
+                "💾 Save Individual Registration",
                 use_container_width=True,
             )
 
-        # -----------------------------------------------------
-        # SAVE GROUP
-        # -----------------------------------------------------
+        if submitted:
 
-        if submit_group:
-
-            if (
-                not tm_name.strip()
-                or not tm_phone.strip()
-                or not atm_name.strip()
-                or not atm_phone.strip()
-            ):
+            if not clean_text(name):
 
                 st.error(
+                    "Please enter the participant name."
+                )
 
-                    "⚠️ മാനേജരുടെയും "
-                    "അസിസ്റ്റന്റ് മാനേജരുടെയും "
-                    "പേരും ഫോൺ നമ്പറും നിർബന്ധമാണ്."
+            elif not selected_events:
+
+                st.error(
+                    "Please select at least one event."
                 )
 
             else:
 
-                g_entry = [{
-
-                    "വിഭാഗം":
-                        g_type,
-
-                    "മേഖല":
-                        detected_zone,
-
-                    "പ്രധാന യൂണിറ്റ്":
-                        unit,
-
-                    "ഇനത്തിന്റെ പേര്":
-                        g_event,
-
-                    "ക്ലസ്റ്റർ യൂണിറ്റുകൾ":
-                        (
-                            ", ".join(
-                                cluster_units
-                            )
-                            if cluster_units
-                            else "-"
-                        ),
-
-                    "ടീം മാനേജർ":
-                        (
-                            f"{tm_name.strip()} "
-                            f"({tm_phone.strip()})"
-                        ),
-
-                    "അസിസ്റ്റന്റ് മാനേജർ":
-                        (
-                            f"{atm_name.strip()} "
-                            f"({atm_phone.strip()})"
-                        ),
-
-                    "രജിസ്റ്റർ ചെയ്ത സമയം":
-                        datetime.now().strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        ),
-                }]
-
                 try:
 
+                    client = get_gspread_client()
+
+                    spreadsheet = get_spreadsheet(
+                        client
+                    )
+
+                    worksheet = get_worksheet(
+                        spreadsheet,
+                        "Individual_Data",
+                    )
+
+                    rows = []
+
+                    for event_name in selected_events:
+
+                        rows.append(
+                            {
+                                "Timestamp": pd.Timestamp.now().strftime(
+                                    "%Y-%m-%d %H:%M:%S"
+                                ),
+                                "Name": name,
+                                "Unit": unit,
+                                "Zone": zone,
+                                "Phone": phone,
+                                "Gender": gender,
+                                "DOB": dob.strftime(
+                                    "%Y-%m-%d"
+                                ),
+                                "Age": calculated_age,
+                                "Age Category": age_category,
+                                "Event": event_name,
+                            }
+                        )
+
                     append_rows(
-                        SHEET_GROUP,
-                        g_entry,
+                        worksheet,
+                        rows,
                     )
 
                     st.success(
+                        f"Registration saved successfully for {name}."
+                    )
 
-                        f"🎉 ഗ്രൂപ്പ് മത്സരം "
-                        f"({g_event}) "
-                        "വിജയകരമായി രജിസ്റ്റർ ചെയ്തു."
+                    st.info(
+                        f"Events registered: {len(selected_events)}"
                     )
 
                     st.rerun()
@@ -1824,1327 +1065,757 @@ if (
                 except Exception as exc:
 
                     st.error(
-
-                        "❌ Google Sheets-ലേക്ക് "
-                        "സേവ് ചെയ്യാൻ കഴിഞ്ഞില്ല."
+                        "Unable to save registration."
                     )
 
-                    with st.expander(
-                        "🔍 Technical error"
-                    ):
-
-                        st.exception(exc)
-
-
-# =============================================================
-# CENTRAL DASHBOARD
-# =============================================================
-
-else:
-
-    st.header(
-        "📊 സെൻട്രൽ ഡാഷ്‌ബോർഡ്"
-    )
-
-    st.caption(
-        "⛪ St. George Parish Day • "
-        "Live Registration Command Center"
-    )
-
-    # =========================================================
-    # ACTION BAR
-    # =========================================================
-
-    action1, action2, action3, action4 = st.columns(
-        [1.2, 1.2, 1.2, 3]
-    )
-
-    with action1:
-
-        if st.button(
-            "🔄 Refresh",
-            use_container_width=True,
-        ):
-
-            st.rerun()
-
-    with action2:
-
-        if st.button(
-            "🔌 Test Connection",
-            use_container_width=True,
-        ):
-
-            ok, result = (
-                test_google_connection()
-            )
-
-            if ok:
-
-                st.success(
-                    f"Connected: {result}"
-                )
-
-            else:
-
-                st.error(
-                    "Google Sheets connection failed."
-                )
-
-                st.code(result)
-
-    with action3:
-
-        auto_refresh = st.toggle(
-            "Auto refresh",
-            value=False,
-        )
-
-    with action4:
-
-        st.info(
-            "Dashboard reads "
-            "Individual_Data and Group_Data "
-            "directly from Google Sheets."
-        )
-
-    if auto_refresh:
-
-        st.caption(
-            "🔄 Auto refresh is enabled. "
-            "Click Refresh for an immediate "
-            "live reload."
-        )
-
-    # =========================================================
-    # LOAD DATA
-    # =========================================================
-
-    with st.spinner(
-        "📡 Google Sheets-ൽ നിന്ന് "
-        "live data ലോഡ് ചെയ്യുന്നു..."
-    ):
-
-        df_ind, ind_error = (
-            fetch_live_data(
-                SHEET_INDIVIDUAL
-            )
-        )
-
-        df_grp, grp_error = (
-            fetch_live_data(
-                SHEET_GROUP
-            )
-        )
-
-    # =========================================================
-    # CONNECTION ERRORS
-    # =========================================================
-
-    if ind_error:
-
-        st.error(
-            "❌ Individual_Data വായിക്കാൻ കഴിഞ്ഞില്ല."
-        )
-
-        with st.expander(
-            "Individual_Data error"
-        ):
-
-            st.code(ind_error)
-
-    if grp_error:
-
-        st.error(
-            "❌ Group_Data വായിക്കാൻ കഴിഞ്ഞില്ല."
-        )
-
-        with st.expander(
-            "Group_Data error"
-        ):
-
-            st.code(grp_error)
-
-    # =========================================================
-    # FIND COLUMNS
-    # =========================================================
-
-    unit_col_ind = find_column(
-
-        df_ind,
-
-        [
-            "യൂണിറ്റ്",
-            "unit",
-            "family unit",
-            "unit name",
-        ],
-    )
-
-    unit_col_grp = find_column(
-
-        df_grp,
-
-        [
-            "പ്രധാന യൂണിറ്റ്",
-            "പ്രധാന യൂണിറ്റ് പേര്",
-            "ക്ലസ്റ്റർ യൂണിറ്റുകൾ",
-            "യൂണിറ്റ്",
-            "unit",
-            "main unit",
-            "main_unit",
-            "family unit",
-        ],
-    )
-
-    events_col_ind = find_column(
-
-        df_ind,
-
-        [
-            "തിരഞ്ഞെടുത്ത ഇനങ്ങൾ",
-            "events",
-            "ഇനങ്ങൾ",
-            "event",
-        ],
-    )
-
-    events_col_grp = find_column(
-
-        df_grp,
-
-        [
-            "ഇനത്തിന്റെ പേര്",
-            "event",
-            "ഇനം",
-            "events",
-        ],
-    )
-
-    zone_col_ind = find_column(
-
-        df_ind,
-
-        [
-            "മേഖല",
-            "zone",
-        ],
-    )
-
-    zone_col_grp = find_column(
-
-        df_grp,
-
-        [
-            "മേഖല",
-            "zone",
-        ],
-    )
-
-    # =========================================================
-    # PREPARE DASHBOARD DATA
-    # =========================================================
-
-    ind = _prepare_dashboard_data(
-        df_ind,
-        unit_col_ind,
-    )
-
-    grp = _prepare_dashboard_data(
-        df_grp,
-        unit_col_grp,
-    )
-
-    # =========================================================
-    # DATA QUALITY
-    # =========================================================
-
-    if (
-        not ind_error
-        and ind.empty
-    ):
-
-        st.warning(
-            "⚠️ Individual_Data is connected, "
-            "but no individual rows were loaded."
-        )
-
-    if (
-        not grp_error
-        and grp.empty
-    ):
-
-        st.warning(
-            "⚠️ Group_Data is connected, "
-            "but no group rows were loaded."
-        )
-
-    # =========================================================
-    # FILTER BAR
-    # =========================================================
-
-    st.subheader(
-        "🎛️ Dashboard Filters"
-    )
-
-    filter1, filter2, filter3 = st.columns(3)
-
-    with filter1:
-
-        zone_options = [
-            "All Zones"
-        ] + list(
-            UNITS_BY_ZONE.keys()
-        )
-
-        selected_zone = st.selectbox(
-
-            "Zone",
-
-            zone_options,
-
-            key="central_zone_filter",
-        )
-
-    zone_units = (
-
-        ALL_UNITS
-
-        if selected_zone == "All Zones"
-
-        else UNITS_BY_ZONE.get(
-            selected_zone,
-            [],
-        )
-    )
-
-    with filter2:
-
-        selected_unit = st.selectbox(
-
-            "Family Unit",
-
-            [
-                "All Units"
-            ] + zone_units,
-
-            key="central_unit_filter",
-        )
-
-    with filter3:
-
-        registration_type = st.selectbox(
-
-            "Registration Type",
-
-            [
-                "All",
-                "Individual",
-                "Group",
-            ],
-
-            key="central_type_filter",
-        )
-
-    # =========================================================
-    # APPLY FILTERS
-    # =========================================================
-
-    ind_view = ind.copy()
-
-    grp_view = grp.copy()
-
-    if selected_zone != "All Zones":
-
-        ind_view = ind_view[
-            ind_view[
-                "__Dashboard Zone"
-            ].eq(selected_zone)
-        ]
-
-        grp_view = grp_view[
-            grp_view[
-                "__Dashboard Zone"
-            ].eq(selected_zone)
-        ]
-
-    if selected_unit != "All Units":
-
-        ind_view = _rows_for_unit(
-
-            ind_view,
-
-            selected_unit,
-
-            unit_col_ind,
-        )
-
-        grp_view = _rows_for_unit(
-
-            grp_view,
-
-            selected_unit,
-
-            unit_col_grp,
-        )
-
-    if registration_type == "Individual":
-
-        grp_view = (
-            grp_view
-            .iloc[0:0]
-            .copy()
-        )
-
-    elif registration_type == "Group":
-
-        ind_view = (
-            ind_view
-            .iloc[0:0]
-            .copy()
-        )
-
-    # =========================================================
-    # KPI CARDS
-    # =========================================================
-
-    individual_count = len(
-        ind_view
-    )
-
-    group_count = len(
-        grp_view
-    )
-
-    total_count = (
-        individual_count
-        + group_count
-    )
-
-    registered_unit_set = set(
-
-        x
-
-        for x in pd.concat(
-
-            [
-
-                (
-                    ind_view[
-                        "__Dashboard Unit"
-                    ]
-
-                    if "__Dashboard Unit"
-                    in ind_view
-
-                    else pd.Series(
-                        dtype=str
-                    )
-                ),
-
-                (
-                    grp_view[
-                        "__Dashboard Unit"
-                    ]
-
-                    if "__Dashboard Unit"
-                    in grp_view
-
-                    else pd.Series(
-                        dtype=str
-                    )
-                ),
-            ],
-
-            ignore_index=True,
-        ).tolist()
-
-        if x in ALL_UNITS
-    )
-
-    k1, k2, k3, k4, k5 = st.columns(5)
-
-    k1.metric(
-        "👤 Individual",
-        individual_count,
-    )
-
-    k2.metric(
-        "👥 Group",
-        group_count,
-    )
-
-    k3.metric(
-        "📋 Total",
-        total_count,
-    )
-
-    k4.metric(
-
-        "🏘️ Units Registered",
-
-        f"{len(registered_unit_set)} / "
-        f"{len(ALL_UNITS)}",
-    )
-
-    k5.metric(
-
-        "📈 Avg / Registered Unit",
-
-        round(
-            total_count
-            / len(registered_unit_set),
-            1,
-        )
-        if registered_unit_set
-        else 0,
-    )
-
-    st.markdown("---")
-
-    # =========================================================
-    # UNIT PERFORMANCE MATRIX
-    # =========================================================
-
-    st.subheader(
-        f"🏘️ Unit Performance — "
-        f"All {len(ALL_UNITS)} Units"
-    )
-
-    unit_rows = []
-
-    for zone, units in (
-        UNITS_BY_ZONE.items()
-    ):
-
-        for current_unit in units:
-
-            n_ind = len(
-                _rows_for_unit(
-                    ind_view,
-                    current_unit,
-                    unit_col_ind,
-                )
-            )
-
-            n_grp = len(
-                _rows_for_unit(
-                    grp_view,
-                    current_unit,
-                    unit_col_grp,
-                )
-            )
-
-            unit_rows.append({
-
-                "Zone":
-                    zone,
-
-                "Unit":
-                    current_unit,
-
-                "Individual":
-                    n_ind,
-
-                "Group":
-                    n_grp,
-
-                "Total":
-                    n_ind + n_grp,
-
-                "Status":
-                    (
-                        "✅ Registered"
-                        if (
-                            n_ind + n_grp
-                        )
-                        else
-                        "⏳ No Entry"
-                    ),
-            })
-
-    unit_df = pd.DataFrame(
-        unit_rows
-    )
-
-    u1, u2 = st.columns(
-        [2, 1]
-    )
-
-    with u1:
-
-        st.dataframe(
-
-            unit_df.sort_values(
-
-                [
-                    "Total",
-                    "Unit",
-                ],
-
-                ascending=[
-                    False,
-                    True,
-                ],
-            ),
-
-            use_container_width=True,
-
-            hide_index=True,
-
-            height=520,
-        )
-
-    with u2:
-
-        registered = unit_df[
-            unit_df["Total"] > 0
-        ]
-
-        pending = unit_df[
-            unit_df["Total"] == 0
-        ]
-
-        st.metric(
-            "✅ Registered Units",
-            len(registered),
-        )
-
-        st.metric(
-            "⏳ Units Without Entry",
-            len(pending),
-        )
-
-        if not pending.empty:
-
-            st.markdown(
-                "**⏳ Pending Units**"
-            )
-
-            st.write(
-                ", ".join(
-                    pending["Unit"].tolist()
-                )
-            )
-
-    st.markdown("---")
-
-    # =========================================================
-    # ZONE + EVENT ANALYTICS
-    # =========================================================
-
-    left, right = st.columns(2)
-
-    with left:
-
-        st.subheader(
-            "🗺️ Zone Performance"
-        )
-
-        zone_rows = []
-
-        for zone in UNITS_BY_ZONE:
-
-            z_ind = int(
-
-                (
-                    ind_view[
-                        "__Dashboard Zone"
-                    ]
-                    == zone
-                ).sum()
-            )
-
-            z_grp = int(
-
-                (
-                    grp_view[
-                        "__Dashboard Zone"
-                    ]
-                    == zone
-                ).sum()
-            )
-
-            zone_rows.append({
-
-                "Zone":
-                    zone,
-
-                "Individual":
-                    z_ind,
-
-                "Group":
-                    z_grp,
-
-                "Total":
-                    z_ind + z_grp,
-            })
-
-        zone_df = pd.DataFrame(
-            zone_rows
-        )
-
-        st.dataframe(
-
-            zone_df,
-
-            use_container_width=True,
-
-            hide_index=True,
-        )
-
-        st.bar_chart(
-
-            zone_df.set_index(
-                "Zone"
-            )["Total"]
-        )
-
-    with right:
-
-        st.subheader(
-            "🎯 Top Events"
-        )
-
-        event_counts = {}
-
-        individual_event_counts = (
-            _event_counts(
-                ind_view,
-                events_col_ind,
-            )
-        )
-
-        for event, count in (
-            individual_event_counts.items()
-        ):
-
-            event_counts[event] = (
-                event_counts.get(
-                    event,
-                    0,
-                )
-                + count
-            )
-
-        group_event_counts = (
-            _event_counts(
-                grp_view,
-                events_col_grp,
-                prefix="👥 ",
-            )
-        )
-
-        for event, count in (
-            group_event_counts.items()
-        ):
-
-            event_counts[event] = (
-                event_counts.get(
-                    event,
-                    0,
-                )
-                + count
-            )
-
-        if event_counts:
-
-            event_df = pd.DataFrame(
-
-                list(
-                    event_counts.items()
-                ),
-
-                columns=[
-                    "Event",
-                    "Registrations",
-                ],
-            ).sort_values(
-
-                "Registrations",
-
-                ascending=False,
-
-            ).head(15)
-
-            st.dataframe(
-
-                event_df,
-
-                use_container_width=True,
-
-                hide_index=True,
-            )
-
-            st.bar_chart(
-
-                event_df.set_index(
-                    "Event"
-                )["Registrations"]
-            )
-
-        else:
-
-            st.info(
-                "No event data available "
-                "for the selected filters."
-            )
-
-    st.markdown("---")
-
-    # =========================================================
-    # DETAILED UNIT VIEW
-    # =========================================================
-
-    st.subheader(
-        "🔎 Detailed Unit View"
-    )
-
-    detail_unit = st.selectbox(
-
-        "Select a unit to inspect",
-
-        [
-            "-- Select Unit --"
-        ] + ALL_UNITS,
-
-        key="detail_unit",
-    )
-
-    if (
-        detail_unit
-        != "-- Select Unit --"
-    ):
-
-        d_ind = _rows_for_unit(
-
-            ind,
-
-            detail_unit,
-
-            unit_col_ind,
-        )
-
-        d_grp = _rows_for_unit(
-
-            grp,
-
-            detail_unit,
-
-            unit_col_grp,
-        )
-
-        st.info(
-
-            f"📍 {detail_unit} • "
-            f"{get_zone_for_unit(detail_unit)} • "
-            f"Individual: {len(d_ind)} • "
-            f"Group: {len(d_grp)} • "
-            f"Total: "
-            f"{len(d_ind) + len(d_grp)}"
-        )
-
-        dt1, dt2 = st.columns(2)
-
-        # -----------------------------------------------------
-        # INDIVIDUAL DETAIL
-        # -----------------------------------------------------
-
-        with dt1:
-
-            st.markdown(
-                "#### 👤 Individual Entries"
-            )
-
-            if d_ind.empty:
-
-                st.info(
-                    "ഈ യൂണിറ്റിൽ "
-                    "individual registration ഇല്ല."
-                )
-
-            else:
-
-                st.dataframe(
-
-                    d_ind.drop(
-
-                        columns=[
-                            "__Dashboard Unit",
-                            "__Dashboard Zone",
-                        ],
-
-                        errors="ignore",
-                    ),
-
-                    use_container_width=True,
-
-                    hide_index=True,
-                )
-
-        # -----------------------------------------------------
-        # GROUP DETAIL
-        # -----------------------------------------------------
-
-        with dt2:
-
-            st.markdown(
-                "#### 👥 Group Entries"
-            )
-
-            if d_grp.empty:
-
-                st.info(
-                    "ഈ യൂണിറ്റിൽ "
-                    "group registration ഇല്ല."
-                )
-
-            else:
-
-                st.dataframe(
-
-                    d_grp.drop(
-
-                        columns=[
-                            "__Dashboard Unit",
-                            "__Dashboard Zone",
-                        ],
-
-                        errors="ignore",
-                    ),
-
-                    use_container_width=True,
-
-                    hide_index=True,
-                )
-
-    st.markdown("---")
-
-    # =========================================================
-    # RECENT REGISTRATIONS
-    # =========================================================
-
-    st.subheader(
-        "🕒 Recent Registrations"
-    )
-
-    recent_frames = []
-
-    if not ind_view.empty:
-
-        temp = ind_view.copy()
-
-        temp["__Type"] = "Individual"
-
-        recent_frames.append(temp)
-
-    if not grp_view.empty:
-
-        temp = grp_view.copy()
-
-        temp["__Type"] = "Group"
-
-        recent_frames.append(temp)
-
-    if recent_frames:
-
-        recent = pd.concat(
-            recent_frames,
-            ignore_index=True,
-        )
-
-        time_col = find_column(
-
-            recent,
-
-            [
-                "രജിസ്റ്റർ ചെയ്ത സമയം",
-                "registered time",
-                "timestamp",
-                "date",
-                "time",
-            ],
-        )
-
-        if time_col:
-
-            recent["__SortTime"] = (
-                pd.to_datetime(
-                    recent[time_col],
-                    errors="coerce",
-                )
-            )
-
-            recent = recent.sort_values(
-
-                "__SortTime",
-
-                ascending=False,
-            )
-
-        recent_display = (
-
-            recent.head(20)
-
-            .drop(
-
-                columns=[
-                    "__Dashboard Unit",
-                    "__Dashboard Zone",
-                    "__SortTime",
-                ],
-
-                errors="ignore",
-            )
-        )
-
-        st.dataframe(
-
-            recent_display,
-
-            use_container_width=True,
-
-            hide_index=True,
-        )
+                    st.exception(exc)
+
+    # --------------------------------------------------------
+    # GROUP REGISTRATION
+    # --------------------------------------------------------
 
     else:
 
-        st.info(
-            "No registrations found "
-            "for the selected filters."
+        st.subheader("👥 Group Registration")
+
+        with st.form("group_registration_form"):
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+
+                group_name = st.text_input(
+                    "Group / Team Name *"
+                )
+
+                main_unit = st.selectbox(
+                    "പ്രധാന യൂണിറ്റ് *",
+                    ALL_UNITS,
+                )
+
+                group_contact = st.text_input(
+                    "Contact Number"
+                )
+
+            with col2:
+
+                group_category = st.selectbox(
+                    "Group Category",
+                    [
+                        "Kiddies",
+                        "Sub Junior",
+                        "Junior",
+                        "Youth",
+                        "Senior",
+                        "Super Senior",
+                    ],
+                )
+
+                group_size = st.number_input(
+                    "Number of Participants",
+                    min_value=1,
+                    max_value=100,
+                    value=1,
+                    step=1,
+                )
+
+            st.divider()
+
+            st.subheader("🎯 Group Events")
+
+            selected_group_events = []
+
+            for category, events in GROUP_EVENTS.items():
+
+                st.markdown(
+                    f"### {category}"
+                )
+
+                for event_name, categories in events.items():
+
+                    if group_category in categories:
+
+                        selected = st.checkbox(
+                            event_name,
+                            key=f"group_{category}_{event_name}",
+                        )
+
+                        if selected:
+                            selected_group_events.append(
+                                event_name
+                            )
+
+            st.divider()
+
+            st.subheader(
+                "Additional Cluster Units"
+            )
+
+            cluster_units = st.multiselect(
+                "If this group represents multiple units, select them here.",
+                [
+                    unit
+                    for unit in ALL_UNITS
+                    if unit != main_unit
+                ],
+            )
+
+            submitted = st.form_submit_button(
+                "💾 Save Group Registration",
+                use_container_width=True,
+            )
+
+        if submitted:
+
+            if not clean_text(group_name):
+
+                st.error(
+                    "Please enter the group/team name."
+                )
+
+            elif not selected_group_events:
+
+                st.error(
+                    "Please select at least one group event."
+                )
+
+            else:
+
+                try:
+
+                    client = get_gspread_client()
+
+                    spreadsheet = get_spreadsheet(
+                        client
+                    )
+
+                    worksheet = get_worksheet(
+                        spreadsheet,
+                        "Group_Data",
+                    )
+
+                    zone = get_zone_for_unit(
+                        main_unit
+                    )
+
+                    all_units_for_group = [
+                        main_unit
+                    ] + cluster_units
+
+                    unit_text = ", ".join(
+                        all_units_for_group
+                    )
+
+                    rows = []
+
+                    for event_name in selected_group_events:
+
+                        rows.append(
+                            {
+                                "Timestamp": pd.Timestamp.now().strftime(
+                                    "%Y-%m-%d %H:%M:%S"
+                                ),
+                                "Group Name": group_name,
+                                "പ്രധാന യൂണിറ്റ്": main_unit,
+                                "Cluster Units": unit_text,
+                                "Zone": zone,
+                                "Contact": group_contact,
+                                "Category": group_category,
+                                "Participants": group_size,
+                                "Event": event_name,
+                            }
+                        )
+
+                    append_rows(
+                        worksheet,
+                        rows,
+                    )
+
+                    st.success(
+                        f"Group registration saved successfully for {group_name}."
+                    )
+
+                    st.info(
+                        f"Events registered: {len(selected_group_events)}"
+                    )
+
+                    st.rerun()
+
+                except Exception as exc:
+
+                    st.error(
+                        "Unable to save group registration."
+                    )
+
+                    st.exception(exc)
+
+
+# ============================================================
+# GOOGLE SHEETS TEST
+# ============================================================
+
+elif page == "Google Sheets Test":
+
+    st.header("🔌 Google Sheets Connection Test")
+
+    st.write(
+        "Use this page to verify the Google Sheets connection."
+    )
+
+    if st.button(
+        "🔄 Test Google Connection",
+        use_container_width=True,
+    ):
+
+        success, result = test_google_connection()
+
+        if success:
+
+            st.success(
+                f"Google Sheets connection successful: {result}"
+            )
+
+        else:
+
+            st.error(
+                "Google Sheets connection failed."
+            )
+
+            st.code(
+                result
+            )
+
+
+# ============================================================
+# CENTRAL DASHBOARD
+# ============================================================
+
+elif page == "Central Dashboard":
+
+    st.header("📊 Central Dashboard")
+
+    st.caption(
+        "Live registration overview from Individual_Data and Group_Data"
+    )
+
+    # --------------------------------------------------------
+    # DASHBOARD CONTROLS
+    # --------------------------------------------------------
+
+    col1, col2, col3 = st.columns(
+        [1, 1, 2]
+    )
+
+    with col1:
+
+        refresh_clicked = st.button(
+            "🔄 Refresh Dashboard",
+            use_container_width=True,
         )
 
-    # =========================================================
-    # FULL REPORT TABS
-    # =========================================================
+    with col2:
 
-    tab_ind, tab_grp, tab_diag = st.tabs(
+        show_empty_units = st.checkbox(
+            "Show units with zero entries",
+            value=True,
+        )
 
+    with col3:
+
+        selected_zone = st.selectbox(
+            "Filter by Zone",
+            [
+                "ALL ZONES"
+            ] + list(ZONES.keys()),
+        )
+
+    if refresh_clicked:
+
+        st.rerun()
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # LOAD GOOGLE SHEETS
+    # --------------------------------------------------------
+
+    try:
+
+        client = get_gspread_client()
+
+        spreadsheet = get_spreadsheet(
+            client
+        )
+
+        individual_ws = get_worksheet(
+            spreadsheet,
+            "Individual_Data",
+        )
+
+        group_ws = get_worksheet(
+            spreadsheet,
+            "Group_Data",
+        )
+
+        individual_df = fetch_live_data(
+            individual_ws
+        )
+
+        group_df = fetch_live_data(
+            group_ws
+        )
+
+    except Exception as exc:
+
+        st.error(
+            "Unable to connect to Google Sheets."
+        )
+
+        st.exception(exc)
+
+        st.stop()
+
+    # --------------------------------------------------------
+    # PREPARE DATA
+    # --------------------------------------------------------
+
+    individual_df = _prepare_dashboard_data(
+        individual_df
+    )
+
+    group_df = _prepare_dashboard_data(
+        group_df
+    )
+
+    # --------------------------------------------------------
+    # TOP METRICS
+    # --------------------------------------------------------
+
+    individual_count = (
+        len(individual_df)
+        if not individual_df.empty
+        else 0
+    )
+
+    group_count = (
+        len(group_df)
+        if not group_df.empty
+        else 0
+    )
+
+    individual_people = individual_count
+
+    # Since individual rows are normally one row per event,
+    # show event registrations separately.
+    individual_event_count = individual_count
+
+    group_event_count = group_count
+
+    total_event_entries = (
+        individual_event_count
+        + group_event_count
+    )
+
+    m1, m2, m3, m4 = st.columns(4)
+
+    m1.metric(
+        "👤 Individual Entries",
+        individual_people,
+    )
+
+    m2.metric(
+        "👥 Group Entries",
+        group_count,
+    )
+
+    m3.metric(
+        "🎯 Individual Event Entries",
+        individual_event_count,
+    )
+
+    m4.metric(
+        "🏆 Total Event Entries",
+        total_event_entries,
+    )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # ZONE SUMMARY
+    # --------------------------------------------------------
+
+    st.subheader("🗺️ Zone Summary")
+
+    zone_rows = []
+
+    zones_to_show = list(ZONES.keys())
+
+    if selected_zone != "ALL ZONES":
+        zones_to_show = [
+            selected_zone
+        ]
+
+    for zone in zones_to_show:
+
+        zone_individual = 0
+        zone_group = 0
+
+        if not individual_df.empty:
+
+            zone_individual = int(
+                (
+                    individual_df["Dashboard Zone"]
+                    == zone
+                ).sum()
+            )
+
+        if not group_df.empty:
+
+            zone_group = int(
+                (
+                    group_df["Dashboard Zone"]
+                    == zone
+                ).sum()
+            )
+
+        zone_rows.append(
+            {
+                "Zone": zone,
+                "Individual Entries": zone_individual,
+                "Group Entries": zone_group,
+                "Total Entries": (
+                    zone_individual
+                    + zone_group
+                ),
+            }
+        )
+
+    zone_summary_df = pd.DataFrame(
+        zone_rows
+    )
+
+    st.dataframe(
+        zone_summary_df,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # UNIT-BY-UNIT DASHBOARD
+    # --------------------------------------------------------
+
+    st.subheader("🏘️ Unit-wise Registration Dashboard")
+
+    for zone in zones_to_show:
+
+        st.markdown(
+            f"## 📍 {zone}"
+        )
+
+        zone_units = ZONES.get(
+            zone,
+            []
+        )
+
+        for unit in zone_units:
+
+            unit_individual_df = _rows_for_unit(
+                individual_df,
+                unit,
+            )
+
+            unit_group_df = _rows_for_unit(
+                group_df,
+                unit,
+            )
+
+            individual_entries = len(
+                unit_individual_df
+            )
+
+            group_entries = len(
+                unit_group_df
+            )
+
+            total_entries = (
+                individual_entries
+                + group_entries
+            )
+
+            # --------------------------------------------
+            # IMPORTANT:
+            # Show ALL SAINTS and every other unit
+            # even when no data exists.
+            # --------------------------------------------
+
+            if (
+                not show_empty_units
+                and total_entries == 0
+            ):
+                continue
+
+            with st.container(
+                border=True
+            ):
+
+                title_col, metric_col = st.columns(
+                    [4, 1]
+                )
+
+                with title_col:
+
+                    st.markdown(
+                        f"### ⛪ {unit}"
+                    )
+
+                    st.caption(
+                        f"{zone}"
+                    )
+
+                with metric_col:
+
+                    st.metric(
+                        "Total",
+                        total_entries,
+                    )
+
+                c1, c2, c3 = st.columns(3)
+
+                c1.metric(
+                    "👤 Individual",
+                    individual_entries,
+                )
+
+                c2.metric(
+                    "👥 Group",
+                    group_entries,
+                )
+
+                c3.metric(
+                    "🎯 Event Entries",
+                    total_entries,
+                )
+
+                # ----------------------------------------
+                # INDIVIDUAL DATA
+                # ----------------------------------------
+
+                st.markdown(
+                    "#### 👤 Individual Entries"
+                )
+
+                if individual_entries > 0:
+
+                    display_df = unit_individual_df.copy()
+
+                    hidden_columns = [
+                        "Dashboard Unit",
+                        "Dashboard Zone",
+                    ]
+
+                    display_df = display_df.drop(
+                        columns=[
+                            column
+                            for column in hidden_columns
+                            if column in display_df.columns
+                        ],
+                        errors="ignore",
+                    )
+
+                    st.dataframe(
+                        display_df,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                else:
+
+                    st.info(
+                        f"{unit} യൂണിറ്റിൽ വ്യക്തിഗത രജിസ്ട്രേഷൻ ഒന്നുമില്ല."
+                    )
+
+                # ----------------------------------------
+                # GROUP DATA
+                # ----------------------------------------
+
+                st.markdown(
+                    "#### 👥 Group Entries"
+                )
+
+                if group_entries > 0:
+
+                    group_display_df = unit_group_df.copy()
+
+                    hidden_columns = [
+                        "Dashboard Unit",
+                        "Dashboard Zone",
+                    ]
+
+                    group_display_df = group_display_df.drop(
+                        columns=[
+                            column
+                            for column in hidden_columns
+                            if column in group_display_df.columns
+                        ],
+                        errors="ignore",
+                    )
+
+                    st.dataframe(
+                        group_display_df,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                else:
+
+                    st.info(
+                        "Group_Data-ൽ ഈ യൂണിറ്റിനായി ഡാറ്റ ലഭ്യമല്ല."
+                    )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # EVENT SUMMARY
+    # --------------------------------------------------------
+
+    st.subheader("🎯 Event-wise Summary")
+
+    tab1, tab2 = st.tabs(
         [
-            "👤 Individual Report",
-            "👥 Group Report",
-            "🛠️ Data Diagnostics",
+            "Individual Events",
+            "Group Events",
         ]
     )
 
-    # =========================================================
-    # INDIVIDUAL REPORT
-    # =========================================================
+    with tab1:
 
-    with tab_ind:
-
-        st.subheader(
-            "All Individual Registrations"
+        individual_event_counts = _event_counts(
+            individual_df
         )
 
-        if not df_ind.empty:
+        if not individual_event_counts.empty:
+
+            event_table = (
+                individual_event_counts
+                .rename("Registrations")
+                .reset_index()
+                .rename(
+                    columns={
+                        "index": "Event"
+                    }
+                )
+            )
 
             st.dataframe(
-
-                df_ind,
-
+                event_table,
                 use_container_width=True,
-
                 hide_index=True,
-
-                height=500,
-            )
-
-            csv = (
-                df_ind
-                .to_csv(
-                    index=False
-                )
-                .encode("utf-8-sig")
-            )
-
-            st.download_button(
-
-                "📥 Download Individual CSV",
-
-                csv,
-
-                "all_individual_reports.csv",
-
-                "text/csv",
-
-                use_container_width=True,
             )
 
         else:
 
             st.info(
-                "Individual_Data has no rows."
+                "No individual event data available."
             )
 
-    # =========================================================
-    # GROUP REPORT
-    # =========================================================
+    with tab2:
 
-    with tab_grp:
-
-        st.subheader(
-            "All Group Registrations"
+        group_event_counts = _event_counts(
+            group_df
         )
 
-        if not df_grp.empty:
+        if not group_event_counts.empty:
+
+            event_table = (
+                group_event_counts
+                .rename("Registrations")
+                .reset_index()
+                .rename(
+                    columns={
+                        "index": "Event"
+                    }
+                )
+            )
 
             st.dataframe(
-
-                df_grp,
-
+                event_table,
                 use_container_width=True,
-
                 hide_index=True,
-
-                height=500,
-            )
-
-            csv_grp = (
-                df_grp
-                .to_csv(
-                    index=False
-                )
-                .encode("utf-8-sig")
-            )
-
-            st.download_button(
-
-                "📥 Download Group CSV",
-
-                csv_grp,
-
-                "all_group_reports.csv",
-
-                "text/csv",
-
-                use_container_width=True,
             )
 
         else:
 
             st.info(
-                "Group_Data has no rows."
+                "No group event data available."
             )
 
-    # =========================================================
-    # DATA DIAGNOSTICS
-    # =========================================================
+    # --------------------------------------------------------
+    # RAW DATA
+    # --------------------------------------------------------
 
-    with tab_diag:
+    st.divider()
 
-        st.subheader(
-            "🛠️ Data Diagnostics"
-        )
+    with st.expander(
+        "🔍 View Raw Individual_Data"
+    ):
 
-        d1, d2, d3, d4 = st.columns(4)
+        if not individual_df.empty:
 
-        d1.metric(
-            "Individual Rows",
-            len(df_ind),
-        )
-
-        d2.metric(
-            "Group Rows",
-            len(df_grp),
-        )
-
-        d3.metric(
-
-            "Individual Unit Column",
-
-            "Found"
-            if unit_col_ind
-            else "Fallback",
-        )
-
-        d4.metric(
-
-            "Group Unit Column",
-
-            "Found"
-            if unit_col_grp
-            else "Fallback",
-        )
-
-        # -----------------------------------------------------
-        # INDIVIDUAL COLUMNS
-        # -----------------------------------------------------
-
-        st.markdown(
-            "#### Individual_Data Columns"
-        )
-
-        if not df_ind.empty:
-
-            st.write(
-                list(df_ind.columns)
-            )
-
-        else:
-
-            st.write(
-                "No columns"
-            )
-
-        # -----------------------------------------------------
-        # GROUP COLUMNS
-        # -----------------------------------------------------
-
-        st.markdown(
-            "#### Group_Data Columns"
-        )
-
-        if not df_grp.empty:
-
-            st.write(
-                list(df_grp.columns)
-            )
-
-        else:
-
-            st.write(
-                "No columns"
-            )
-
-        # -----------------------------------------------------
-        # UNKNOWN ROWS
-        # -----------------------------------------------------
-
-        unknown_ind = (
-
-            int(
-                (
-                    ind[
-                        "__Dashboard Unit"
-                    ]
-                    == "UNKNOWN"
-                ).sum()
-            )
-
-            if not ind.empty
-
-            else 0
-        )
-
-        unknown_grp = (
-
-            int(
-                (
-                    grp[
-                        "__Dashboard Unit"
-                    ]
-                    == "UNKNOWN"
-                ).sum()
-            )
-
-            if not grp.empty
-
-            else 0
-        )
-
-        if (
-            unknown_ind == 0
-            and unknown_grp == 0
-        ):
-
-            st.success(
-                "✅ All registration rows "
-                "are mapped to known family units."
-            )
-
-        else:
-
-            st.warning(
-
-                f"Unmatched individual rows: "
-                f"{unknown_ind} | "
-                f"Unmatched group rows: "
-                f"{unknown_grp}"
-            )
-
-        # -----------------------------------------------------
-        # UNKNOWN INDIVIDUAL ROWS
-        # -----------------------------------------------------
-
-        if unknown_ind:
-
-            st.markdown(
-                "**Individual rows not mapped "
-                "to a known unit**"
+            raw_individual = individual_df.drop(
+                columns=[
+                    "Dashboard Unit",
+                    "Dashboard Zone",
+                ],
+                errors="ignore",
             )
 
             st.dataframe(
-
-                ind[
-                    ind[
-                        "__Dashboard Unit"
-                    ] == "UNKNOWN"
-                ].drop(
-
-                    columns=[
-                        "__Dashboard Unit",
-                        "__Dashboard Zone",
-                    ],
-
-                    errors="ignore",
-                ),
-
+                raw_individual,
                 use_container_width=True,
-
                 hide_index=True,
             )
 
-        # -----------------------------------------------------
-        # UNKNOWN GROUP ROWS
-        # -----------------------------------------------------
+        else:
 
-        if unknown_grp:
+            st.info(
+                "Individual_Data is empty."
+            )
 
-            st.markdown(
-                "**Group rows not mapped "
-                "to a known unit**"
+    with st.expander(
+        "🔍 View Raw Group_Data"
+    ):
+
+        if not group_df.empty:
+
+            raw_group = group_df.drop(
+                columns=[
+                    "Dashboard Unit",
+                    "Dashboard Zone",
+                ],
+                errors="ignore",
             )
 
             st.dataframe(
-
-                grp[
-                    grp[
-                        "__Dashboard Unit"
-                    ] == "UNKNOWN"
-                ].drop(
-
-                    columns=[
-                        "__Dashboard Unit",
-                        "__Dashboard Zone",
-                    ],
-
-                    errors="ignore",
-                ),
-
+                raw_group,
                 use_container_width=True,
-
                 hide_index=True,
             )
-The important age change
-The new code uses:
 
-elif age <= 55:
-    return "Senior", age
-else:
-    return "Super Senior", age
-Therefore:
+        else:
 
-56+ has no upper limit.
-
-For example, if someone born in 1950 registers in 2026, the system calculates approximately 76 years → Super Senior and displays the events available for Super Senior.
-
-Run it
-From your project folder:
-
-python -m streamlit run app.py
-If you are using Streamlit Cloud, replace the existing app.py with this version and redeploy.
-
-One important thing: your current event configuration means that not every event is available to Super Seniors. The age calculation now correctly identifies them as Super Senior, but they will only see events where "Super Senior" is included in ARTS_INDIVIDUAL or SPORTS_INDIVIDUAL.
+            st.info(
+                "Group_Data is empty."
+            )
 
 
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.divider()
+
+st.caption(
+    "⛪ St. George Parish Day Portal | Registration + Central Dashboard"
+)
