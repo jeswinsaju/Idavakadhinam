@@ -675,10 +675,6 @@ def _row_has_unit(row, target_unit):
             if _norm(part) == target:
                 return True
 
-            # Handle text containing a unit name.
-            if target and target in _norm(part):
-                return True
-
     return False
 
 
@@ -756,9 +752,6 @@ def _derive_unit(row):
             if _norm(unit) == _norm(value_text):
                 return unit
 
-            if _norm(unit) in _norm(value_text):
-                return unit
-
     return "UNKNOWN"
 
 
@@ -820,6 +813,76 @@ def _event_counts(df):
 
 
 # ============================================================
+# DATE OF BIRTH PICKER (Day / Month / Year dropdowns)
+# ============================================================
+# st.date_input's calendar makes it very hard to go back to old
+# years. Three dropdowns let the user jump straight to any year
+# from the current year back to 1920.
+
+MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]
+
+DOB_MIN_YEAR = 1920
+
+
+def dob_picker(label, key_prefix, default_year=2010):
+    """
+    Returns a datetime.date, or None if the chosen date is invalid
+    (e.g. 31 February or a date in the future).
+    """
+
+    st.markdown(f"**{label}**")
+
+    today = date.today()
+
+    years = list(range(today.year, DOB_MIN_YEAR - 1, -1))
+
+    if default_year not in years:
+        default_year = years[0]
+
+    c_day, c_month, c_year = st.columns([1, 2, 1.4])
+
+    with c_day:
+        day = st.selectbox(
+            "Day",
+            list(range(1, 32)),
+            key=f"{key_prefix}_day",
+        )
+
+    with c_month:
+        month_name = st.selectbox(
+            "Month",
+            MONTH_NAMES,
+            key=f"{key_prefix}_month",
+        )
+
+    with c_year:
+        year = st.selectbox(
+            "Year",
+            years,
+            index=years.index(default_year),
+            key=f"{key_prefix}_year",
+        )
+
+    month = MONTH_NAMES.index(month_name) + 1
+
+    try:
+        dob = date(year, month, day)
+    except ValueError:
+        st.error(
+            f"{day} {month_name} {year} is not a valid date."
+        )
+        return None
+
+    if dob > today:
+        st.error("Date of birth cannot be in the future.")
+        return None
+
+    return dob
+
+# ============================================================
 # SESSION STATE
 # ============================================================
 
@@ -828,6 +891,12 @@ if "page" not in st.session_state:
 
 if "refresh_counter" not in st.session_state:
     st.session_state.refresh_counter = 0
+
+if "form_version" not in st.session_state:
+    st.session_state.form_version = 0
+
+if "flash" not in st.session_state:
+    st.session_state.flash = ""
 
 
 # ============================================================
@@ -884,10 +953,22 @@ with st.sidebar:
 # ============================================================
 # REGISTRATION PAGE
 # ============================================================
+# NOTE: The widgets here are intentionally NOT inside st.form().
+# Inside a form Streamlit does not update anything until the submit
+# button is pressed, which is why Zone / Unit / DOB / Age Category
+# looked broken. Without a form they update instantly.
 
 if page == "Registration":
 
     st.header("📝 Participant Registration")
+
+    # Changing this number gives every widget a fresh key,
+    # which clears the whole form after a successful save.
+    fv = st.session_state.form_version
+
+    if st.session_state.flash:
+        st.success(st.session_state.flash)
+        st.session_state.flash = ""
 
     registration_type = st.radio(
         "Registration Type",
@@ -908,42 +989,51 @@ if page == "Registration":
 
         st.subheader("👤 Individual Registration")
 
-        with st.form("individual_registration_form"):
+        col1, col2 = st.columns(2)
 
-            col1, col2 = st.columns(2)
+        with col1:
 
-            with col1:
+            name = st.text_input(
+                "പങ്കെടുക്കുന്ന വ്യക്തിയുടെ പേര് *",
+                key=f"ind_name_{fv}",
+            )
 
-                name = st.text_input(
-                    "പങ്കെടുക്കുന്ന വ്യക്തിയുടെ പേര് *"
-                )
+            zone = st.selectbox(
+                "സോൺ (Zone) *",
+                list(ZONES.keys()),
+                key=f"ind_zone_{fv}",
+            )
 
-                unit = st.selectbox(
-                    "യൂണിറ്റ് *",
-                    ALL_UNITS,
-                )
+            # Units are filtered by the selected zone.
+            # The zone is part of the key so the list refreshes properly.
+            unit = st.selectbox(
+                "യൂണിറ്റ് *",
+                ZONES[zone],
+                key=f"ind_unit_{fv}_{zone}",
+            )
 
-                phone = st.text_input(
-                    "ഫോൺ നമ്പർ"
-                )
+            phone = st.text_input(
+                "ഫോൺ നമ്പർ",
+                key=f"ind_phone_{fv}",
+            )
 
-                gender = st.selectbox(
-                    "ലിംഗം",
-                    [
-                        "Male",
-                        "Female",
-                        "Other",
-                    ],
-                )
+            gender = st.selectbox(
+                "ലിംഗം",
+                ["Male", "Female", "Other"],
+                key=f"ind_gender_{fv}",
+            )
 
-            with col2:
+        with col2:
 
-                dob = st.date_input(
-                    "ജനന തീയതി (DOB) *",
-                    value=date(2010, 1, 1),
-                    min_value=date(1900, 1, 1),
-                    max_value=date.today(),
-                )
+            dob = dob_picker(
+                "ജനന തീയതി (DOB) *",
+                key_prefix=f"ind_dob_{fv}",
+            )
+
+            age_category = None
+            calculated_age = None
+
+            if dob is not None:
 
                 age_category, calculated_age = get_age_category(
                     dob
@@ -954,46 +1044,62 @@ if page == "Registration":
                     f"Category: **{age_category}**"
                 )
 
-                zone = get_zone_for_unit(unit)
+            st.text_input(
+                "Zone",
+                value=zone,
+                disabled=True,
+                key=f"ind_zone_display_{fv}_{zone}",
+            )
 
-                st.text_input(
-                    "Zone",
-                    value=zone,
-                    disabled=True,
-                )
+        st.divider()
 
-            st.divider()
+        st.subheader("🎯 Select Events")
 
-            st.subheader("🎯 Select Events")
+        selected_events = []
 
-            selected_events = []
+        if age_category is None:
+
+            st.warning(
+                "Select a valid date of birth to see the events."
+            )
+
+        else:
 
             for category, events in INDIVIDUAL_EVENTS.items():
+
+                available = [
+                    event_name
+                    for event_name, categories in events.items()
+                    if age_category in categories
+                ]
+
+                if not available:
+                    continue
 
                 st.markdown(
                     f"### {category}"
                 )
 
-                for event_name, categories in events.items():
+                for event_name in available:
 
-                    if age_category in categories:
+                    selected = st.checkbox(
+                        event_name,
+                        key=f"ind_{fv}_{category}_{event_name}",
+                    )
 
-                        selected = st.checkbox(
-                            event_name,
-                            key=f"individual_{category}_{event_name}",
+                    if selected:
+                        selected_events.append(
+                            event_name
                         )
 
-                        if selected:
-                            selected_events.append(
-                                event_name
-                            )
+        st.divider()
 
-            st.divider()
-
-            submitted = st.form_submit_button(
-                "💾 Save Individual Registration",
-                use_container_width=True,
-            )
+        submitted = st.button(
+            "💾 Save Individual Registration",
+            use_container_width=True,
+            type="primary",
+            key=f"ind_submit_{fv}",
+        )
 
         if submitted:
 
@@ -1001,6 +1107,12 @@ if page == "Registration":
 
                 st.error(
                     "Please enter the participant name."
+                )
+
+            elif dob is None:
+
+                st.error(
+                    "Please select a valid date of birth."
                 )
 
             elif not selected_events:
@@ -1033,7 +1145,7 @@ if page == "Registration":
                                 "Timestamp": pd.Timestamp.now().strftime(
                                     "%Y-%m-%d %H:%M:%S"
                                 ),
-                                "Name": name,
+                                "Name": clean_text(name),
                                 "Unit": unit,
                                 "Zone": zone,
                                 "Phone": phone,
@@ -1052,13 +1164,13 @@ if page == "Registration":
                         rows,
                     )
 
-                    st.success(
-                        f"Registration saved successfully for {name}."
+                    st.session_state.flash = (
+                        f"Registration saved successfully for "
+                        f"{clean_text(name)} "
+                        f"({len(selected_events)} event(s))."
                     )
 
-                    st.info(
-                        f"Events registered: {len(selected_events)}"
-                    )
+                    st.session_state.form_version += 1
 
                     st.rerun()
 
@@ -1078,92 +1190,111 @@ if page == "Registration":
 
         st.subheader("👥 Group Registration")
 
-        with st.form("group_registration_form"):
+        col1, col2 = st.columns(2)
 
-            col1, col2 = st.columns(2)
+        with col1:
 
-            with col1:
-
-                group_name = st.text_input(
-                    "Group / Team Name *"
-                )
-
-                main_unit = st.selectbox(
-                    "പ്രധാന യൂണിറ്റ് *",
-                    ALL_UNITS,
-                )
-
-                group_contact = st.text_input(
-                    "Contact Number"
-                )
-
-            with col2:
-
-                group_category = st.selectbox(
-                    "Group Category",
-                    [
-                        "Kiddies",
-                        "Sub Junior",
-                        "Junior",
-                        "Youth",
-                        "Senior",
-                        "Super Senior",
-                    ],
-                )
-
-                group_size = st.number_input(
-                    "Number of Participants",
-                    min_value=1,
-                    max_value=100,
-                    value=1,
-                    step=1,
-                )
-
-            st.divider()
-
-            st.subheader("🎯 Group Events")
-
-            selected_group_events = []
-
-            for category, events in GROUP_EVENTS.items():
-
-                st.markdown(
-                    f"### {category}"
-                )
-
-                for event_name, categories in events.items():
-
-                    if group_category in categories:
-
-                        selected = st.checkbox(
-                            event_name,
-                            key=f"group_{category}_{event_name}",
-                        )
-
-                        if selected:
-                            selected_group_events.append(
-                                event_name
-                            )
-
-            st.divider()
-
-            st.subheader(
-                "Additional Cluster Units"
+            group_name = st.text_input(
+                "Group / Team Name *",
+                key=f"grp_name_{fv}",
             )
 
-            cluster_units = st.multiselect(
-                "If this group represents multiple units, select them here.",
+            zone = st.selectbox(
+                "സോൺ (Zone) *",
+                list(ZONES.keys()),
+                key=f"grp_zone_{fv}",
+            )
+
+            main_unit = st.selectbox(
+                "പ്രധാന യൂണിറ്റ് *",
+                ZONES[zone],
+                key=f"grp_unit_{fv}_{zone}",
+            )
+
+            group_contact = st.text_input(
+                "Contact Number",
+                key=f"grp_contact_{fv}",
+            )
+
+        with col2:
+
+            group_category = st.selectbox(
+                "Group Category",
                 [
-                    unit
-                    for unit in ALL_UNITS
-                    if unit != main_unit
+                    "Kiddies",
+                    "Sub Junior",
+                    "Junior",
+                    "Youth",
+                    "Senior",
+                    "Super Senior",
                 ],
+                key=f"grp_category_{fv}",
             )
 
-            submitted = st.form_submit_button(
-                "💾 Save Group Registration",
-                use_container_width=True,
+            group_size = st.number_input(
+                "Number of Participants",
+                min_value=1,
+                max_value=100,
+                value=1,
+                step=1,
+                key=f"grp_size_{fv}",
             )
+
+        st.divider()
+
+        st.subheader("🎯 Group Events")
+
+        selected_group_events = []
+
+        for category, events in GROUP_EVENTS.items():
+
+            available = [
+                event_name
+                for event_name, categories in events.items()
+                if group_category in categories
+            ]
+
+            if not available:
+                continue
+
+            st.markdown(
+                f"### {category}"
+            )
+
+            for event_name in available:
+
+                selected = st.checkbox(
+                    event_name,
+                    key=f"grp_{fv}_{category}_{event_name}",
+                )
+
+                if selected:
+                    selected_group_events.append(
+                        event_name
+                    )
+
+        st.divider()
+
+        st.subheader(
+            "Additional Cluster Units"
+        )
+
+        cluster_units = st.multiselect(
+            "If this group represents multiple units, select them here.",
+            [
+                u
+                for u in ALL_UNITS
+                if u != main_unit
+            ],
+            key=f"grp_cluster_{fv}_{main_unit}",
+        )
+
+        submitted = st.button(
+            "💾 Save Group Registration",
+            use_container_width=True,
+            type="primary",
+            key=f"grp_submit_{fv}",
+        )
 
         if submitted:
 
@@ -1194,16 +1325,8 @@ if page == "Registration":
                         "Group_Data",
                     )
 
-                    zone = get_zone_for_unit(
-                        main_unit
-                    )
-
-                    all_units_for_group = [
-                        main_unit
-                    ] + cluster_units
-
                     unit_text = ", ".join(
-                        all_units_for_group
+                        [main_unit] + cluster_units
                     )
 
                     rows = []
@@ -1215,7 +1338,7 @@ if page == "Registration":
                                 "Timestamp": pd.Timestamp.now().strftime(
                                     "%Y-%m-%d %H:%M:%S"
                                 ),
-                                "Group Name": group_name,
+                                "Group Name": clean_text(group_name),
                                 "പ്രധാന യൂണിറ്റ്": main_unit,
                                 "Cluster Units": unit_text,
                                 "Zone": zone,
@@ -1231,13 +1354,13 @@ if page == "Registration":
                         rows,
                     )
 
-                    st.success(
-                        f"Group registration saved successfully for {group_name}."
+                    st.session_state.flash = (
+                        f"Group registration saved successfully for "
+                        f"{clean_text(group_name)} "
+                        f"({len(selected_group_events)} event(s))."
                     )
 
-                    st.info(
-                        f"Events registered: {len(selected_group_events)}"
-                    )
+                    st.session_state.form_version += 1
 
                     st.rerun()
 
