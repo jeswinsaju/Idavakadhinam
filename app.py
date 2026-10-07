@@ -214,23 +214,17 @@ INDIVIDUAL_EVENTS = {
             "Senior",
             "Super Senior",
         ],
-        "ക്വിസ്": [
+        "ക്രയോൺ പെയിന്റിംഗ് ": [
             "Kiddies",
-            "Sub Junior",
-            "Junior",
-            "Youth",
-            "Senior",
-            "Super Senior",
+           
         ],
-         "വവാട്ടർ കളർ": [
+         "വാട്ടർ കളർ": [
            
             "Sub Junior",
             "Junior",
           
         ],
-        "ക്രയോൺ പെയിന്റിങ്": [
-            "Kiddies",
-        ],
+        
     },
 }
 
