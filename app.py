@@ -546,15 +546,30 @@ def get_spreadsheet(client):
 
 
 def get_worksheet(spreadsheet, worksheet_name):
+    """
+    Find a tab by name. Matching ignores case, spaces, underscores and
+    punctuation ("Individual Data" == "Individual_Data"). A new tab is
+    created only when no similar tab exists.
+    """
+
     try:
         return spreadsheet.worksheet(worksheet_name)
 
     except gspread.WorksheetNotFound:
-        return spreadsheet.add_worksheet(
-            title=worksheet_name,
-            rows=1000,
-            cols=40,
-        )
+        pass
+
+    wanted = _norm(worksheet_name)
+
+    for sheet in spreadsheet.worksheets():
+
+        if _norm(sheet.title) == wanted:
+            return sheet
+
+    return spreadsheet.add_worksheet(
+        title=worksheet_name,
+        rows=1000,
+        cols=40,
+    )
 
 
 # ============================================================
@@ -609,10 +624,10 @@ def fetch_live_data(worksheet):
     return pd.DataFrame(rows, columns=headers)
 
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=10, show_spinner=False)
 def load_sheet_df(sheet_name):
     """
-    Cached read (20 seconds) so repeated clicks do not exhaust the
+    Cached read (10 seconds) so repeated clicks do not exhaust the
     Google Sheets read quota. The Refresh button clears this cache.
     """
 
@@ -625,9 +640,33 @@ def load_sheet_df(sheet_name):
     return fetch_live_data(worksheet)
 
 
+@st.cache_data(ttl=10, show_spinner=False)
+def sheet_overview():
+    """
+    Which spreadsheet is the app really connected to, and which tabs
+    does it contain? Used by the dashboard "Data check".
+    """
+
+    client = get_gspread_client()
+
+    spreadsheet = get_spreadsheet(client)
+
+    return {
+        "title": spreadsheet.title,
+        "url": spreadsheet.url,
+        "tabs": [
+            (sheet.title, sheet.row_count)
+            for sheet in spreadsheet.worksheets()
+        ],
+    }
+
+
 def append_rows(worksheet, rows):
     """
     Append dictionary rows according to the worksheet headers.
+
+    Headers are matched ignoring case/spaces. Any column that is not
+    in the sheet yet is added to the header row, so no value is lost.
     """
 
     if not rows:
@@ -635,26 +674,60 @@ def append_rows(worksheet, rows):
 
     existing_values = worksheet.get_all_values()
 
-    if not existing_values:
+    if not existing_values or not any(
+        clean_text(cell) for cell in existing_values[0]
+    ):
         headers = list(rows[0].keys())
 
-        worksheet.append_row(
-            headers,
-            value_input_option="USER_ENTERED",
+        worksheet.update(
+            range_name="A1",
+            values=[headers],
         )
 
     else:
-        headers = existing_values[0]
+        headers = list(existing_values[0])
+
+        normalised = {
+            _norm(header): header
+            for header in headers
+            if clean_text(header)
+        }
+
+        missing = [
+            key
+            for key in rows[0].keys()
+            if _norm(key) not in normalised
+        ]
+
+        if missing:
+
+            headers = headers + missing
+
+            worksheet.update(
+                range_name="A1",
+                values=[headers],
+            )
+
+    lookup = {
+        _norm(header): index
+        for index, header in enumerate(headers)
+        if clean_text(header)
+    }
 
     values = []
 
     for row in rows:
-        values.append(
-            [
-                row.get(header, "")
-                for header in headers
-            ]
-        )
+
+        line = [""] * len(headers)
+
+        for key, value in row.items():
+
+            position = lookup.get(_norm(key))
+
+            if position is not None:
+                line[position] = value
+
+        values.append(line)
 
     if values:
         worksheet.append_rows(
@@ -1270,6 +1343,8 @@ if page == "Registration":
                         f"({len(selected_events)} event(s))."
                     )
 
+                    st.cache_data.clear()
+
                     st.session_state.form_version += 1
 
                     st.rerun()
@@ -1460,6 +1535,8 @@ if page == "Registration":
                         f"({len(selected_group_events)} event(s))."
                     )
 
+                    st.cache_data.clear()
+
                     st.session_state.form_version += 1
 
                     st.rerun()
@@ -1649,7 +1726,47 @@ elif page == "Central Dashboard":
     # ZONE SUMMARY
     # --------------------------------------------------------
 
-    with st.expander("🛠️ Data check (rows loaded from Google Sheets)"):
+    _nothing_loaded = individual_df.empty and group_df.empty
+
+    if _nothing_loaded:
+
+        st.warning(
+            "No registration rows were found in the connected Google "
+            "Sheet. Open the Data check below to see which spreadsheet "
+            "and tabs the app is reading."
+        )
+
+    st.caption(
+        "Last loaded: "
+        + pd.Timestamp.now().strftime("%d %b %Y, %I:%M:%S %p")
+        + " (data refreshes every 10 seconds, or press Refresh)"
+    )
+
+    with st.expander(
+        "🛠️ Data check (rows loaded from Google Sheets)",
+        expanded=_nothing_loaded,
+    ):
+
+        try:
+
+            overview_info = sheet_overview()
+
+            st.write(
+                f"**Connected spreadsheet:** "
+                f"[{overview_info['title']}]({overview_info['url']})"
+            )
+
+            st.write(
+                "**Tabs found:** "
+                + ", ".join(
+                    f"{name} ({rows} rows)"
+                    for name, rows in overview_info["tabs"]
+                )
+            )
+
+        except Exception as exc:
+
+            st.error(f"Could not read spreadsheet details: {exc}")
 
         for label, frame in (
             ("Individual_Data", individual_df),
