@@ -1267,12 +1267,16 @@ if page == "Registration":
                     if age_category in categories
                 ]
 
-                if not available:
-                    continue
-
                 st.markdown(
                     f"### {category}"
                 )
+
+                if not available:
+                    st.caption(
+                        f"No {category} events are available for "
+                        f"{age_category}."
+                    )
+                    continue
 
                 for event_name in available:
 
@@ -1450,12 +1454,16 @@ if page == "Registration":
                 if group_category in categories
             ]
 
-            if not available:
-                continue
-
             st.markdown(
                 f"### {category}"
             )
+
+            if not available:
+                st.caption(
+                    f"No {category} group events are available for "
+                    f"{group_category}. Choose another Group Category."
+                )
+                continue
 
             for event_name in available:
 
