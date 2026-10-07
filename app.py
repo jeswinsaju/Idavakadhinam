@@ -396,6 +396,39 @@ def _split_values(value):
 
 
 # ============================================================
+# STREAMLIT VERSION COMPATIBILITY
+# ============================================================
+# Newer Streamlit versions replaced use_container_width=True with
+# width="stretch" (and eventually removed the old argument).
+# These helpers work on both old and new versions.
+
+def show_df(data, **kwargs):
+    kwargs.pop("use_container_width", None)
+    kwargs.setdefault("hide_index", True)
+
+    try:
+        st.dataframe(data, width="stretch", **kwargs)
+    except TypeError:
+        st.dataframe(data, use_container_width=True, **kwargs)
+
+
+def wide_button(label, **kwargs):
+    kwargs.pop("use_container_width", None)
+
+    try:
+        return st.button(label, width="stretch", **kwargs)
+    except TypeError:
+        return st.button(label, use_container_width=True, **kwargs)
+
+
+def bordered_container():
+    try:
+        return st.container(border=True)
+    except TypeError:
+        return st.container()
+
+
+# ============================================================
 # GOOGLE SHEETS CONFIGURATION
 # ============================================================
 
@@ -529,19 +562,67 @@ def get_worksheet(spreadsheet, worksheet_name):
 # ============================================================
 
 def fetch_live_data(worksheet):
-    try:
-        records = worksheet.get_all_records()
+    """
+    Read a worksheet into a DataFrame.
 
-        if not records:
-            return pd.DataFrame()
+    Unlike get_all_records(), this does NOT fail when the header row has
+    blank or duplicate cells, and it ignores completely empty rows.
+    Errors are raised so the caller can show them.
+    """
 
-        return pd.DataFrame(records)
+    values = worksheet.get_all_values()
 
-    except Exception as exc:
-        st.error(
-            f"Unable to read Google Sheet: {exc}"
-        )
+    if len(values) < 2:
         return pd.DataFrame()
+
+    raw_headers = values[0]
+
+    headers = []
+    seen = {}
+
+    for index, header in enumerate(raw_headers):
+
+        header = clean_text(header) or f"Column {index + 1}"
+
+        if header in seen:
+            seen[header] += 1
+            header = f"{header} ({seen[header]})"
+        else:
+            seen[header] = 1
+
+        headers.append(header)
+
+    rows = []
+
+    for row in values[1:]:
+
+        if not any(clean_text(cell) for cell in row):
+            continue
+
+        padded = list(row) + [""] * (len(headers) - len(row))
+
+        rows.append(padded[: len(headers)])
+
+    if not rows:
+        return pd.DataFrame()
+
+    return pd.DataFrame(rows, columns=headers)
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def load_sheet_df(sheet_name):
+    """
+    Cached read (20 seconds) so repeated clicks do not exhaust the
+    Google Sheets read quota. The Refresh button clears this cache.
+    """
+
+    client = get_gspread_client()
+
+    spreadsheet = get_spreadsheet(client)
+
+    worksheet = get_worksheet(spreadsheet, sheet_name)
+
+    return fetch_live_data(worksheet)
 
 
 def append_rows(worksheet, rows):
@@ -773,6 +854,25 @@ def _prepare_dashboard_data(df):
     data["Dashboard Zone"] = data["Dashboard Unit"].apply(
         get_zone_for_unit
     )
+
+    # Fallback: use the saved "Zone" column when the unit is unknown.
+    zone_col = next(
+        (c for c in data.columns if _norm(c) == "ZONE"),
+        None,
+    )
+
+    if zone_col is not None:
+
+        valid_zones = {_norm(z): z for z in ZONES}
+
+        data["Dashboard Zone"] = [
+            current
+            if current != "UNASSIGNED"
+            else valid_zones.get(_norm(saved), "UNASSIGNED")
+            for current, saved in zip(
+                data["Dashboard Zone"], data[zone_col]
+            )
+        ]
 
     return data
 
@@ -1094,7 +1194,7 @@ if page == "Registration":
 
         st.divider()
 
-        submitted = st.button(
+        submitted = wide_button(
             "💾 Save Individual Registration",
             use_container_width=True,
             type="primary",
@@ -1289,7 +1389,7 @@ if page == "Registration":
             key=f"grp_cluster_{fv}_{main_unit}",
         )
 
-        submitted = st.button(
+        submitted = wide_button(
             "💾 Save Group Registration",
             use_container_width=True,
             type="primary",
@@ -1385,7 +1485,7 @@ elif page == "Google Sheets Test":
         "Use this page to verify the Google Sheets connection."
     )
 
-    if st.button(
+    if wide_button(
         "🔄 Test Google Connection",
         use_container_width=True,
     ):
@@ -1431,7 +1531,7 @@ elif page == "Central Dashboard":
 
     with col1:
 
-        refresh_clicked = st.button(
+        refresh_clicked = wide_button(
             "🔄 Refresh Dashboard",
             use_container_width=True,
         )
@@ -1454,6 +1554,8 @@ elif page == "Central Dashboard":
 
     if refresh_clicked:
 
+        st.cache_data.clear()
+
         st.rerun()
 
     st.divider()
@@ -1464,29 +1566,9 @@ elif page == "Central Dashboard":
 
     try:
 
-        client = get_gspread_client()
+        individual_df = load_sheet_df("Individual_Data")
 
-        spreadsheet = get_spreadsheet(
-            client
-        )
-
-        individual_ws = get_worksheet(
-            spreadsheet,
-            "Individual_Data",
-        )
-
-        group_ws = get_worksheet(
-            spreadsheet,
-            "Group_Data",
-        )
-
-        individual_df = fetch_live_data(
-            individual_ws
-        )
-
-        group_df = fetch_live_data(
-            group_ws
-        )
+        group_df = load_sheet_df("Group_Data")
 
     except Exception as exc:
 
@@ -1567,6 +1649,43 @@ elif page == "Central Dashboard":
     # ZONE SUMMARY
     # --------------------------------------------------------
 
+    with st.expander("🛠️ Data check (rows loaded from Google Sheets)"):
+
+        for label, frame in (
+            ("Individual_Data", individual_df),
+            ("Group_Data", group_df),
+        ):
+
+            if frame is None or frame.empty:
+                st.write(f"**{label}:** 0 rows")
+                continue
+
+            st.write(
+                f"**{label}:** {len(frame)} rows"
+            )
+
+            st.caption(
+                "Columns: "
+                + ", ".join(
+                    c for c in frame.columns
+                    if c not in ("Dashboard Unit", "Dashboard Zone")
+                )
+            )
+
+            unmatched = frame[frame["Dashboard Unit"] == "UNKNOWN"]
+
+            if not unmatched.empty:
+                st.warning(
+                    f"{len(unmatched)} row(s) have a unit that does not "
+                    "match any unit in the list:"
+                )
+                show_df(
+                    unmatched.drop(
+                        columns=["Dashboard Unit", "Dashboard Zone"],
+                        errors="ignore",
+                    )
+                )
+
     st.subheader("🗺️ Zone Summary")
 
     zone_rows = []
@@ -1613,11 +1732,34 @@ elif page == "Central Dashboard":
             }
         )
 
+    if selected_zone == "ALL ZONES":
+
+        un_ind = (
+            int((individual_df["Dashboard Zone"] == "UNASSIGNED").sum())
+            if not individual_df.empty else 0
+        )
+
+        un_grp = (
+            int((group_df["Dashboard Zone"] == "UNASSIGNED").sum())
+            if not group_df.empty else 0
+        )
+
+        if un_ind + un_grp > 0:
+
+            zone_rows.append(
+                {
+                    "Zone": "UNASSIGNED",
+                    "Individual Entries": un_ind,
+                    "Group Entries": un_grp,
+                    "Total Entries": un_ind + un_grp,
+                }
+            )
+
     zone_summary_df = pd.DataFrame(
         zone_rows
     )
 
-    st.dataframe(
+    show_df(
         zone_summary_df,
         use_container_width=True,
         hide_index=True,
@@ -1679,9 +1821,7 @@ elif page == "Central Dashboard":
             ):
                 continue
 
-            with st.container(
-                border=True
-            ):
+            with bordered_container():
 
                 title_col, metric_col = st.columns(
                     [4, 1]
@@ -1747,7 +1887,7 @@ elif page == "Central Dashboard":
                         errors="ignore",
                     )
 
-                    st.dataframe(
+                    show_df(
                         display_df,
                         use_container_width=True,
                         hide_index=True,
@@ -1785,7 +1925,7 @@ elif page == "Central Dashboard":
                         errors="ignore",
                     )
 
-                    st.dataframe(
+                    show_df(
                         group_display_df,
                         use_container_width=True,
                         hide_index=True,
@@ -1831,7 +1971,7 @@ elif page == "Central Dashboard":
                 )
             )
 
-            st.dataframe(
+            show_df(
                 event_table,
                 use_container_width=True,
                 hide_index=True,
@@ -1862,7 +2002,7 @@ elif page == "Central Dashboard":
                 )
             )
 
-            st.dataframe(
+            show_df(
                 event_table,
                 use_container_width=True,
                 hide_index=True,
@@ -1894,7 +2034,7 @@ elif page == "Central Dashboard":
                 errors="ignore",
             )
 
-            st.dataframe(
+            show_df(
                 raw_individual,
                 use_container_width=True,
                 hide_index=True,
@@ -1920,7 +2060,7 @@ elif page == "Central Dashboard":
                 errors="ignore",
             )
 
-            st.dataframe(
+            show_df(
                 raw_group,
                 use_container_width=True,
                 hide_index=True,
