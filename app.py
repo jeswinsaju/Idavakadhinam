@@ -322,16 +322,17 @@ GROUP_EVENTS = {
 
 def get_age_category(dob):
     """
-    Competition age categories:
+    Competition age categories (by date of birth):
 
-    0-5   = Kiddies
-    6-10  = Sub Junior
-    11-15 = Junior
-    16-35 = Youth
-    36-55 = Senior
-    56+   = Super Senior
+    Kiddies      : 01/01/2016 - 31/12/2019
+    Sub Junior   : 01/01/2013 - 31/12/2015
+    Junior       : 01/01/2008 - 31/12/2012
+    Youth        : 01/01/1996 - 31/12/2007
+    Senior       : 01/01/1971 - 31/12/1995
+    Super Senior : born on or before 31/12/1970
 
-    There is NO upper age limit.
+    Returns (category, age). The category is None when the date of
+    birth is after 31/12/2019 (not eligible for any category).
     """
 
     today = date.today()
@@ -340,15 +341,17 @@ def get_age_category(dob):
         (today.month, today.day) < (dob.month, dob.day)
     )
 
-    if age <= 5:
+    if dob > date(2019, 12, 31):
+        return None, age
+    elif dob >= date(2016, 1, 1):
         return "Kiddies", age
-    elif age <= 10:
+    elif dob >= date(2013, 1, 1):
         return "Sub Junior", age
-    elif age <= 15:
+    elif dob >= date(2008, 1, 1):
         return "Junior", age
-    elif age <= 35:
+    elif dob >= date(1996, 1, 1):
         return "Youth", age
-    elif age <= 55:
+    elif dob >= date(1971, 1, 1):
         return "Senior", age
     else:
         return "Super Senior", age
@@ -1123,17 +1126,17 @@ with st.sidebar:
 
     st.markdown(
         """
-        **Kiddies:** 0 - 5 years
+        **Kiddies:** born 01/01/2016 - 31/12/2019
 
-        **Sub Junior:** 6 - 10 years
+        **Sub Junior:** born 01/01/2013 - 31/12/2015
 
-        **Junior:** 11 - 15 years
+        **Junior:** born 01/01/2008 - 31/12/2012
 
-        **Youth:** 16 - 35 years
+        **Youth:** born 01/01/1996 - 31/12/2007
 
-        **Senior:** 36 - 55 years
+        **Senior:** born 01/01/1971 - 31/12/1995
 
-        **Super Senior:** 56+ years
+        **Super Senior:** born on or before 31/12/1970
         """
     )
 
@@ -1233,10 +1236,19 @@ if page == "Registration":
                     dob
                 )
 
-                st.info(
-                    f"Calculated Age: **{calculated_age} years**\n\n"
-                    f"Category: **{age_category}**"
-                )
+                if age_category is None:
+
+                    st.error(
+                        "This date of birth (after 31/12/2019) does not "
+                        "fall in any age category."
+                    )
+
+                else:
+
+                    st.info(
+                        f"Calculated Age: **{calculated_age} years**\n\n"
+                        f"Category: **{age_category}**"
+                    )
 
             st.text_input(
                 "Zone",
@@ -1311,6 +1323,12 @@ if page == "Registration":
 
                 st.error(
                     "Please select a valid date of birth."
+                )
+
+            elif age_category is None:
+
+                st.error(
+                    "This date of birth does not fall in any age category."
                 )
 
             elif not selected_events:
