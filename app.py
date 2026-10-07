@@ -222,13 +222,14 @@ INDIVIDUAL_EVENTS = {
             "Senior",
             "Super Senior",
         ],
-        "ചിത്രാങ്കനം": [
-            "Kiddies",
+         "വവാട്ടർ കളർ": [
+           
             "Sub Junior",
             "Junior",
-            "Youth",
-            "Senior",
-            "Super Senior",
+          
+        ],
+        "ക്രയോൺ പെയിന്റിങ്": [
+            "Kiddies",
         ],
     },
 }
