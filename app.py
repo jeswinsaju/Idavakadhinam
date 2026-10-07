@@ -157,7 +157,6 @@ INDIVIDUAL_EVENTS = {
             "Junior",
             "Youth",
             "Senior",
-            "Super Senior",
         ],
         "100 Mtr. Race": [
             "Sub Junior",
@@ -188,7 +187,6 @@ INDIVIDUAL_EVENTS = {
             "Junior",
             "Youth",
             "Senior",
-            "Super Senior",
         ],
     },
     "Literary": {
@@ -260,36 +258,59 @@ GROUP_EVENTS = {
         ],
     },
     "Sports": {
-        "4x100 Relay": [
-            "Kiddies",
+        "4 X 100 Relay (SUB JUNIOR - BOYS)": [
+            "Sub Junior",
+        ],
+        "4 X 100 Relay (SUB JUNIOR - GIRLS)": [
+            "Sub Junior",
+        ],
+        "4 X 100 Relay (JUNIOR - BOYS)": [
+            "Junior",
+        ],
+        "4 X 100 Relay (JUNIOR - GIRLS)": [
+            "Junior",
+        ],
+        "4 X 100 Relay (YOUTH - BOYS)": [
+            "Youth",
+        ],
+        "4 X 100 Relay (YOUTH - GIRLS)": [
+            "Youth",
+        ],
+        "4 X 100 Relay (SENIOR - MEN)": [
+            "Senior",
+        ],
+        "4 X 100 Relay (SENIOR - WOMEN)": [
+            "Senior",
+        ],
+        "4x400 Relay": [
             "Sub Junior",
             "Junior",
             "Youth",
             "Senior",
         ],
-        "Badminton Doubles - Boys": [
+        "Badminton Doubles (BOYS)": [
             "Sub Junior",
             "Junior",
             "Youth",
             "Senior",
-            "Super Senior",
         ],
-        "Badminton Doubles - Girls": [
+        "Badminton Doubles (GIRLS)": [
             "Sub Junior",
             "Junior",
             "Youth",
             "Senior",
-            "Super Senior",
         ],
-        "Men's Football 5s": [
+        "Men's Football 5s (Maximum 7 Players)": [
+            "Sub Junior",
+            "Junior",
             "Youth",
             "Senior",
-            "Super Senior",
         ],
-        "Men's Cricket 6s": [
+        "Men's Cricket 6s (Maximum 7 Players)": [
+            "Sub Junior",
+            "Junior",
             "Youth",
             "Senior",
-            "Super Senior",
         ],
     },
 }
