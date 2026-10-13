@@ -1005,6 +1005,209 @@ def _event_counts(df):
 
 
 # ============================================================
+# PARTICIPANT CHECK HELPERS (duplicates, 3-item limit, sorting)
+# ============================================================
+
+MAX_ITEMS_DEFAULT = 3
+
+ITEM_TYPES = ["Arts", "Sports", "Literary"]
+
+
+def _item_type_lookup():
+    """
+    Event name -> Arts / Sports / Literary (from INDIVIDUAL_EVENTS).
+    Event names are normalised so stray spaces do not matter.
+    """
+
+    lookup = {}
+
+    for item_type, events in INDIVIDUAL_EVENTS.items():
+
+        for event_name in events:
+            lookup[_norm(event_name)] = item_type
+
+    return lookup
+
+
+def _first_column(df, names):
+    """Exact (normalised) column match only."""
+
+    wanted = [_norm(n) for n in names]
+
+    for column in df.columns:
+        if _norm(column) in wanted:
+            return column
+
+    return None
+
+
+def _normalise_gender(value):
+    text = clean_text(value).upper()
+
+    if text in ("MALE", "M", "BOY", "MAN", "MEN"):
+        return "Male"
+
+    if text in ("FEMALE", "F", "GIRL", "WOMAN", "WOMEN"):
+        return "Female"
+
+    return clean_text(value).title() or "Not given"
+
+
+def build_participant_table(individual_df):
+    """
+    One row per individual registration, with clean columns used by the
+    Participant Check: Person, Name, Unit, Zone, Gender, DOB,
+    Age Category, Item Type, Event, Duplicate.
+
+    Person = same Name + Unit + DOB (DOB only if the sheet has it).
+    Duplicate = same Person registered for the same Event more than once.
+    """
+
+    if individual_df is None or individual_df.empty:
+        return pd.DataFrame()
+
+    name_col = _first_column(
+        individual_df, ["Name", "Participant Name", "പേര്"]
+    )
+    event_col = _first_column(
+        individual_df, ["Event", "Event Name", "Item", "ഇനം"]
+    )
+
+    if name_col is None or event_col is None:
+        return pd.DataFrame()
+
+    gender_col = _first_column(individual_df, ["Gender", "Sex", "ലിംഗം"])
+    dob_col = _first_column(individual_df, ["DOB", "Date of Birth"])
+    age_cat_col = _first_column(individual_df, ["Age Category", "Category"])
+
+    lookup = _item_type_lookup()
+
+    table = pd.DataFrame(
+        {
+            "Name": individual_df[name_col].map(clean_text),
+            "Unit": individual_df["Dashboard Unit"],
+            "Zone": individual_df["Dashboard Zone"],
+            "Gender": (
+                individual_df[gender_col].map(_normalise_gender)
+                if gender_col
+                else "Not given"
+            ),
+            "DOB": (
+                individual_df[dob_col].map(clean_text)
+                if dob_col
+                else ""
+            ),
+            "Age Category": (
+                individual_df[age_cat_col].map(clean_text)
+                if age_cat_col
+                else ""
+            ),
+            "Event": individual_df[event_col].map(clean_text),
+        }
+    )
+
+    table = table[
+        (table["Name"] != "") & (table["Event"] != "")
+    ].copy()
+
+    if table.empty:
+        return table
+
+    table["Item Type"] = table["Event"].map(
+        lambda e: lookup.get(_norm(e), "Other")
+    )
+
+    table["Person"] = (
+        table["Name"].map(_norm)
+        + "|"
+        + table["Unit"].map(_norm)
+        + "|"
+        + table["DOB"].map(_norm)
+    )
+
+    table["_event_key"] = table["Event"].map(_norm)
+
+    table["Duplicate"] = table.duplicated(
+        subset=["Person", "_event_key"],
+        keep=False,
+    )
+
+    return table.reset_index(drop=True)
+
+
+def build_person_summary(table, max_items, per_type):
+    """
+    One row per person: distinct items in Arts / Sports / Literary,
+    total, and whether the limit is exceeded.
+
+    per_type=False -> max_items in TOTAL (Arts + Sports + Literary)
+    per_type=True  -> max_items in EACH of Arts, Sports and Literary
+    Repeated (duplicate) entries of the same event count only once.
+    """
+
+    if table is None or table.empty:
+        return pd.DataFrame()
+
+    distinct = table.drop_duplicates(
+        subset=["Person", "_event_key"]
+    )
+
+    rows = []
+
+    for person, group in distinct.groupby("Person", sort=False):
+
+        first = group.iloc[0]
+
+        counts = {
+            item_type: int((group["Item Type"] == item_type).sum())
+            for item_type in ITEM_TYPES
+        }
+
+        other = int((group["Item Type"] == "Other").sum())
+
+        total = int(sum(counts.values())) + other
+
+        if per_type:
+            exceeded = [
+                t for t in ITEM_TYPES if counts[t] > max_items
+            ]
+            over = bool(exceeded)
+            note = (
+                "Over limit in: " + ", ".join(exceeded)
+                if over
+                else "OK"
+            )
+        else:
+            over = total > max_items
+            note = (
+                f"{total} items (limit {max_items})"
+                if over
+                else "OK"
+            )
+
+        rows.append(
+            {
+                "_person": person,
+                "Name": first["Name"],
+                "Unit": first["Unit"],
+                "Zone": first["Zone"],
+                "Gender": first["Gender"],
+                "DOB": first["DOB"],
+                "Age Category": first["Age Category"],
+                "Arts": counts["Arts"],
+                "Sports": counts["Sports"],
+                "Literary": counts["Literary"],
+                "Total Items": total,
+                "Status": "⚠️ " + note if over else "✅ OK",
+                "Items": ", ".join(group["Event"]),
+                "_over": over,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+# ============================================================
 # DATE OF BIRTH PICKER (Day / Month / Year dropdowns)
 # ============================================================
 # st.date_input's calendar makes it very hard to go back to old
@@ -2172,6 +2375,432 @@ elif page == "Central Dashboard":
             st.info(
                 "No group event data available."
             )
+
+    # --------------------------------------------------------
+    # PARTICIPANT CHECK (sorting, duplicates, item limit)
+    # --------------------------------------------------------
+
+    st.divider()
+
+    st.subheader(
+        "🔎 Participant Check: Sorting, Duplicates & Item Limit"
+    )
+
+    st.caption(
+        "Based on Individual_Data. A person = same Name + Unit + DOB. "
+        "Group entries are not included in these checks."
+    )
+
+    participants = build_participant_table(individual_df)
+
+    if participants.empty:
+
+        st.info(
+            "No individual registrations to check yet."
+        )
+
+    else:
+
+        # ---------------- rule settings ----------------
+
+        r1, r2 = st.columns([1, 2])
+
+        with r1:
+
+            max_items = st.number_input(
+                "Maximum items per person",
+                min_value=1,
+                max_value=20,
+                value=MAX_ITEMS_DEFAULT,
+                step=1,
+                key="pc_max_items",
+            )
+
+        with r2:
+
+            limit_mode = st.radio(
+                "How to apply the limit",
+                [
+                    "In total (Arts + Sports + Literary together)",
+                    "In each of Arts, Sports and Literary separately",
+                ],
+                key="pc_limit_mode",
+            )
+
+        per_type = limit_mode.startswith("In each")
+
+        # ---------------- filters ----------------
+
+        f1, f2, f3, f4 = st.columns(4)
+
+        with f1:
+
+            unit_choice = st.selectbox(
+                "Unit",
+                ["ALL UNITS"] + sorted(
+                    participants["Unit"].unique()
+                ),
+                key="pc_unit",
+            )
+
+        with f2:
+
+            event_choice = st.selectbox(
+                "Event / Item",
+                ["ALL EVENTS"] + sorted(
+                    participants["Event"].unique()
+                ),
+                key="pc_event",
+            )
+
+        with f3:
+
+            gender_choice = st.selectbox(
+                "Male / Female",
+                ["ALL"] + sorted(
+                    participants["Gender"].unique()
+                ),
+                key="pc_gender",
+            )
+
+        with f4:
+
+            type_choice = st.selectbox(
+                "Item type",
+                ["ALL TYPES"] + sorted(
+                    participants["Item Type"].unique()
+                ),
+                key="pc_type",
+            )
+
+        s1, s2 = st.columns([3, 1])
+
+        with s1:
+
+            sort_options = [
+                "Unit",
+                "Event",
+                "Gender",
+                "Item Type",
+                "Name",
+                "Age Category",
+            ]
+
+            sort_by = st.multiselect(
+                "Sort by (in this order)",
+                sort_options,
+                default=["Unit", "Event"],
+                key="pc_sort",
+            )
+
+        with s2:
+
+            only_duplicates = st.checkbox(
+                "Only duplicates",
+                value=False,
+                key="pc_only_dups",
+            )
+
+        # ---------------- apply filters ----------------
+
+        view = participants
+
+        if selected_zone != "ALL ZONES":
+            view = view[view["Zone"] == selected_zone]
+
+        if unit_choice != "ALL UNITS":
+            view = view[view["Unit"] == unit_choice]
+
+        if event_choice != "ALL EVENTS":
+            view = view[view["Event"] == event_choice]
+
+        if gender_choice != "ALL":
+            view = view[view["Gender"] == gender_choice]
+
+        if type_choice != "ALL TYPES":
+            view = view[view["Item Type"] == type_choice]
+
+        if only_duplicates:
+            view = view[view["Duplicate"]]
+
+        sort_columns = [c for c in sort_by if c in view.columns]
+
+        if sort_columns and not view.empty:
+
+            view = view.sort_values(
+                by=sort_columns,
+                key=lambda column: column.astype(str).str.casefold(),
+                kind="stable",
+            )
+
+        # The limit is always counted on ALL of a person's entries,
+        # even when an event or unit filter is applied above.
+
+        people = build_person_summary(
+            participants,
+            int(max_items),
+            per_type,
+        )
+
+        if not people.empty:
+
+            people = people[
+                people["_person"].isin(view["Person"])
+            ]
+
+        # ---------------- headline numbers ----------------
+
+        duplicate_groups = (
+            view[view["Duplicate"]]
+            .groupby(["Person", "_event_key"])
+            .ngroups
+            if not view.empty
+            else 0
+        )
+
+        over_count = (
+            int(people["_over"].sum())
+            if not people.empty
+            else 0
+        )
+
+        male_count = (
+            int((people["Gender"] == "Male").sum())
+            if not people.empty
+            else 0
+        )
+
+        female_count = (
+            int((people["Gender"] == "Female").sum())
+            if not people.empty
+            else 0
+        )
+
+        k1, k2, k3, k4, k5 = st.columns(5)
+
+        k1.metric("👥 Participants", len(people))
+        k2.metric("♂ Male", male_count)
+        k3.metric("♀ Female", female_count)
+        k4.metric("⚠️ Duplicate entries", duplicate_groups)
+        k5.metric("🚫 Over item limit", over_count)
+
+        tab_entries, tab_dups, tab_limit = st.tabs(
+            [
+                "📋 Sorted Entries",
+                "👯 Duplicates",
+                "🚦 Item Limit",
+            ]
+        )
+
+        # ---------------- tab: sorted entries ----------------
+
+        with tab_entries:
+
+            entries_view = view.copy()
+
+            entries_view["Duplicate?"] = entries_view[
+                "Duplicate"
+            ].map(lambda d: "⚠️ Duplicate" if d else "")
+
+            entries_view = entries_view[
+                [
+                    "Name",
+                    "Unit",
+                    "Zone",
+                    "Gender",
+                    "DOB",
+                    "Age Category",
+                    "Item Type",
+                    "Event",
+                    "Duplicate?",
+                ]
+            ]
+
+            st.write(f"**{len(entries_view)} entries**")
+
+            show_df(
+                entries_view,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.download_button(
+                "⬇️ Download this list (CSV)",
+                data=entries_view.to_csv(index=False).encode(
+                    "utf-8-sig"
+                ),
+                file_name="participant_entries.csv",
+                mime="text/csv",
+                key="pc_download_entries",
+            )
+
+        # ---------------- tab: duplicates ----------------
+
+        with tab_dups:
+
+            dup_rows = view[view["Duplicate"]]
+
+            if dup_rows.empty:
+
+                st.success(
+                    "No duplicate entries found "
+                    "(same person registered twice for the same event)."
+                )
+
+            else:
+
+                dup_table = (
+                    dup_rows
+                    .groupby(["Person", "_event_key"], sort=False)
+                    .agg(
+                        Name=("Name", "first"),
+                        Unit=("Unit", "first"),
+                        DOB=("DOB", "first"),
+                        Event=("Event", "first"),
+                        Times=("Event", "size"),
+                    )
+                    .reset_index(drop=True)
+                )
+
+                st.warning(
+                    f"{len(dup_table)} duplicate registration(s) found."
+                )
+
+                show_df(
+                    dup_table,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            with st.expander(
+                "Same name and unit but different date of birth"
+            ):
+
+                persons = participants.drop_duplicates(
+                    subset=["Person"]
+                ).copy()
+
+                persons["_name_unit"] = (
+                    persons["Name"].map(_norm)
+                    + "|"
+                    + persons["Unit"].map(_norm)
+                )
+
+                similar = persons[
+                    persons.duplicated("_name_unit", keep=False)
+                ].sort_values("_name_unit")
+
+                if similar.empty:
+
+                    st.info("None found.")
+
+                else:
+
+                    st.caption(
+                        "These may be the same person entered with a "
+                        "different or mistyped date of birth."
+                    )
+
+                    show_df(
+                        similar[
+                            [
+                                "Name",
+                                "Unit",
+                                "DOB",
+                                "Gender",
+                                "Age Category",
+                            ]
+                        ],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+        # ---------------- tab: item limit ----------------
+
+        with tab_limit:
+
+            if per_type:
+
+                st.caption(
+                    f"Rule: a person may take part in at most "
+                    f"{int(max_items)} item(s) in EACH of Arts, "
+                    "Sports and Literary. Repeated entries of the same "
+                    "event count once."
+                )
+
+            else:
+
+                st.caption(
+                    f"Rule: a person may take part in at most "
+                    f"{int(max_items)} item(s) in TOTAL across Arts, "
+                    "Sports and Literary. Repeated entries of the same "
+                    "event count once."
+                )
+
+            only_over = st.checkbox(
+                "Show only people over the limit",
+                value=True,
+                key="pc_only_over",
+            )
+
+            limit_view = people
+
+            if only_over and not limit_view.empty:
+                limit_view = limit_view[limit_view["_over"]]
+
+            if limit_view.empty:
+
+                st.success(
+                    "Nobody is over the limit."
+                    if only_over
+                    else "No participants to show."
+                )
+
+            else:
+
+                limit_view = limit_view.sort_values(
+                    by=["_over", "Unit", "Name"],
+                    ascending=[False, True, True],
+                    key=lambda column: (
+                        column
+                        if column.dtype == bool
+                        else column.astype(str).str.casefold()
+                    ),
+                    kind="stable",
+                )
+
+                limit_table = limit_view[
+                    [
+                        "Name",
+                        "Unit",
+                        "Zone",
+                        "Gender",
+                        "DOB",
+                        "Age Category",
+                        "Arts",
+                        "Sports",
+                        "Literary",
+                        "Total Items",
+                        "Status",
+                        "Items",
+                    ]
+                ]
+
+                show_df(
+                    limit_table,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                st.download_button(
+                    "⬇️ Download this list (CSV)",
+                    data=limit_table.to_csv(index=False).encode(
+                        "utf-8-sig"
+                    ),
+                    file_name="participant_item_limit.csv",
+                    mime="text/csv",
+                    key="pc_download_limit",
+                )
 
     # --------------------------------------------------------
     # RAW DATA
